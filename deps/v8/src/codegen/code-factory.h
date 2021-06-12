@@ -68,7 +68,6 @@ class V8_EXPORT_PRIVATE CodeFactory final {
   static Callable FastNewFunctionContext(Isolate* isolate,
                                          ScopeType scope_type);
 
-  static Callable ArgumentAdaptor(Isolate* isolate);
   static Callable Call(Isolate* isolate,
                        ConvertReceiverMode mode = ConvertReceiverMode::kAny);
   static Callable Call_WithFeedback(Isolate* isolate, ConvertReceiverMode mode);
@@ -93,6 +92,7 @@ class V8_EXPORT_PRIVATE CodeFactory final {
       Isolate* isolate, InterpreterPushArgsMode mode);
   static Callable InterpreterCEntry(Isolate* isolate, int result_size = 1);
   static Callable InterpreterOnStackReplacement(Isolate* isolate);
+  static Callable InterpreterOnStackReplacement_ToBaseline(Isolate* isolate);
 
   static Callable ArrayNoArgumentConstructor(
       Isolate* isolate, ElementsKind kind,

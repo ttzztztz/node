@@ -26,7 +26,6 @@
 #include "src/objects/js-generator-inl.h"
 #include "src/objects/js-promise-inl.h"
 #include "src/objects/js-regexp-inl.h"
-#include "src/objects/layout-descriptor.h"
 #include "src/objects/literal-objects-inl.h"
 #include "src/objects/objects-body-descriptors.h"
 #include "src/objects/objects-inl.h"
@@ -646,6 +645,10 @@ HeapEntry* V8HeapExplorer::AddEntry(HeapObject object) {
 
 HeapEntry* V8HeapExplorer::AddEntry(HeapObject object, HeapEntry::Type type,
                                     const char* name) {
+  if (FLAG_heap_profiler_show_hidden_objects && type == HeapEntry::kHidden) {
+    type = HeapEntry::kNative;
+  }
+
   return AddEntry(object.address(), type, name, object.Size());
 }
 
@@ -665,27 +668,35 @@ HeapEntry* V8HeapExplorer::AddEntry(Address address,
 }
 
 const char* V8HeapExplorer::GetSystemEntryName(HeapObject object) {
-  switch (object.map().instance_type()) {
-    case MAP_TYPE:
-      switch (Map::cast(object).instance_type()) {
+  if (object.IsMap()) {
+    switch (Map::cast(object).instance_type()) {
 #define MAKE_STRING_MAP_CASE(instance_type, size, name, Name) \
         case instance_type: return "system / Map (" #Name ")";
       STRING_TYPE_LIST(MAKE_STRING_MAP_CASE)
 #undef MAKE_STRING_MAP_CASE
         default: return "system / Map";
-      }
-    case CELL_TYPE: return "system / Cell";
-    case PROPERTY_CELL_TYPE: return "system / PropertyCell";
-    case FOREIGN_TYPE: return "system / Foreign";
-    case ODDBALL_TYPE: return "system / Oddball";
-    case ALLOCATION_SITE_TYPE:
-      return "system / AllocationSite";
-#define MAKE_STRUCT_CASE(TYPE, Name, name) \
-  case TYPE:                               \
+    }
+  }
+
+  switch (object.map().instance_type()) {
+#define MAKE_TORQUE_CASE(Name, TYPE) \
+  case TYPE:                         \
     return "system / " #Name;
-      STRUCT_LIST(MAKE_STRUCT_CASE)
-#undef MAKE_STRUCT_CASE
-    default: return "system";
+    // The following lists include every non-String instance type.
+    // This includes a few types that already have non-"system" names assigned
+    // by AddEntry, but this is a convenient way to avoid manual upkeep here.
+    TORQUE_INSTANCE_CHECKERS_SINGLE_FULLY_DEFINED(MAKE_TORQUE_CASE)
+    TORQUE_INSTANCE_CHECKERS_MULTIPLE_FULLY_DEFINED(MAKE_TORQUE_CASE)
+    TORQUE_INSTANCE_CHECKERS_SINGLE_ONLY_DECLARED(MAKE_TORQUE_CASE)
+    TORQUE_INSTANCE_CHECKERS_MULTIPLE_ONLY_DECLARED(MAKE_TORQUE_CASE)
+#undef MAKE_TORQUE_CASE
+
+    // Strings were already handled by AddEntry.
+#define MAKE_STRING_CASE(instance_type, size, name, Name) \
+  case instance_type:                                     \
+    UNREACHABLE();
+    STRING_TYPE_LIST(MAKE_STRING_CASE)
+#undef MAKE_STRING_CASE
   }
 }
 
@@ -1067,35 +1078,30 @@ void V8HeapExplorer::ExtractMapReferences(HeapEntry* entry, Map map) {
                            Map::kTransitionsOrPrototypeInfoOffset);
     }
   }
-  DescriptorArray descriptors = map.instance_descriptors(kRelaxedLoad);
+  DescriptorArray descriptors = map.instance_descriptors();
   TagObject(descriptors, "(map descriptors)");
   SetInternalReference(entry, "descriptors", descriptors,
                        Map::kInstanceDescriptorsOffset);
   SetInternalReference(entry, "prototype", map.prototype(),
                        Map::kPrototypeOffset);
-  if (FLAG_unbox_double_fields) {
-    SetInternalReference(entry, "layout_descriptor",
-                         map.layout_descriptor(kAcquireLoad),
-                         Map::kLayoutDescriptorOffset);
-  }
   if (map.IsContextMap()) {
     Object native_context = map.native_context();
     TagObject(native_context, "(native context)");
     SetInternalReference(entry, "native_context", native_context,
                          Map::kConstructorOrBackPointerOrNativeContextOffset);
   } else {
-    Object constructor_or_backpointer = map.constructor_or_backpointer();
-    if (constructor_or_backpointer.IsMap()) {
-      TagObject(constructor_or_backpointer, "(back pointer)");
-      SetInternalReference(entry, "back_pointer", constructor_or_backpointer,
+    Object constructor_or_back_pointer = map.constructor_or_back_pointer();
+    if (constructor_or_back_pointer.IsMap()) {
+      TagObject(constructor_or_back_pointer, "(back pointer)");
+      SetInternalReference(entry, "back_pointer", constructor_or_back_pointer,
                            Map::kConstructorOrBackPointerOrNativeContextOffset);
-    } else if (constructor_or_backpointer.IsFunctionTemplateInfo()) {
-      TagObject(constructor_or_backpointer, "(constructor function data)");
+    } else if (constructor_or_back_pointer.IsFunctionTemplateInfo()) {
+      TagObject(constructor_or_back_pointer, "(constructor function data)");
       SetInternalReference(entry, "constructor_function_data",
-                           constructor_or_backpointer,
+                           constructor_or_back_pointer,
                            Map::kConstructorOrBackPointerOrNativeContextOffset);
     } else {
-      SetInternalReference(entry, "constructor", constructor_or_backpointer,
+      SetInternalReference(entry, "constructor", constructor_or_back_pointer,
                            Map::kConstructorOrBackPointerOrNativeContextOffset);
     }
   }
@@ -1106,11 +1112,10 @@ void V8HeapExplorer::ExtractMapReferences(HeapEntry* entry, Map map) {
 
 void V8HeapExplorer::ExtractSharedFunctionInfoReferences(
     HeapEntry* entry, SharedFunctionInfo shared) {
-  String shared_name = shared.DebugName();
-  const char* name = nullptr;
-  if (shared_name != ReadOnlyRoots(heap_).empty_string()) {
-    name = names_->GetName(shared_name);
-    TagObject(shared.GetCode(), names_->GetFormatted("(code for %s)", name));
+  std::unique_ptr<char[]> name = shared.DebugNameCStr();
+  if (name[0] != '\0') {
+    TagObject(shared.GetCode(),
+              names_->GetFormatted("(code for %s)", name.get()));
   } else {
     TagObject(shared.GetCode(),
               names_->GetFormatted("(%s code)",
@@ -1179,10 +1184,17 @@ void V8HeapExplorer::ExtractCodeReferences(HeapEntry* entry, Code code) {
   TagObject(code.deoptimization_data(), "(code deopt data)");
   SetInternalReference(entry, "deoptimization_data", code.deoptimization_data(),
                        Code::kDeoptimizationDataOffset);
-  TagObject(code.source_position_table(), "(source position table)");
-  SetInternalReference(entry, "source_position_table",
-                       code.source_position_table(),
-                       Code::kSourcePositionTableOffset);
+  if (code.kind() == CodeKind::BASELINE) {
+    TagObject(code.bytecode_offset_table(), "(bytecode offset table)");
+    SetInternalReference(entry, "bytecode_offset_table",
+                         code.bytecode_offset_table(),
+                         Code::kPositionTableOffset);
+  } else {
+    TagObject(code.source_position_table(), "(source position table)");
+    SetInternalReference(entry, "source_position_table",
+                         code.source_position_table(),
+                         Code::kPositionTableOffset);
+  }
 }
 
 void V8HeapExplorer::ExtractCellReferences(HeapEntry* entry, Cell cell) {
@@ -1328,7 +1340,7 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject js_obj,
                                                HeapEntry* entry) {
   Isolate* isolate = js_obj.GetIsolate();
   if (js_obj.HasFastProperties()) {
-    DescriptorArray descs = js_obj.map().instance_descriptors(kRelaxedLoad);
+    DescriptorArray descs = js_obj.map().instance_descriptors(isolate);
     for (InternalIndex i : js_obj.map().IterateOwnDescriptors()) {
       PropertyDetails details = descs.GetDetails(i);
       switch (details.location()) {
@@ -1355,7 +1367,7 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject js_obj,
   } else if (js_obj.IsJSGlobalObject()) {
     // We assume that global objects can only have slow properties.
     GlobalDictionary dictionary =
-        JSGlobalObject::cast(js_obj).global_dictionary();
+        JSGlobalObject::cast(js_obj).global_dictionary(kAcquireLoad);
     ReadOnlyRoots roots(isolate);
     for (InternalIndex i : dictionary.IterateEntries()) {
       if (!dictionary.IsKey(roots, dictionary.KeyAt(i))) continue;
@@ -1364,6 +1376,21 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject js_obj,
       Object value = cell.value();
       PropertyDetails details = cell.property_details();
       SetDataOrAccessorPropertyReference(details.kind(), entry, name, value);
+    }
+  } else if (V8_ENABLE_SWISS_NAME_DICTIONARY_BOOL) {
+    // SwissNameDictionary::IterateEntries creates a Handle, which should not
+    // leak out of here.
+    HandleScope scope(isolate);
+
+    SwissNameDictionary dictionary = js_obj.property_dictionary_swiss();
+    ReadOnlyRoots roots(isolate);
+    for (InternalIndex i : dictionary.IterateEntries()) {
+      Object k = dictionary.KeyAt(i);
+      if (!dictionary.IsKey(roots, k)) continue;
+      Object value = dictionary.ValueAt(i);
+      PropertyDetails details = dictionary.DetailsAt(i);
+      SetDataOrAccessorPropertyReference(details.kind(), entry, Name::cast(k),
+                                         value);
     }
   } else {
     NameDictionary dictionary = js_obj.property_dictionary();
@@ -1430,7 +1457,7 @@ void V8HeapExplorer::ExtractInternalReferences(JSObject js_obj,
 
 JSFunction V8HeapExplorer::GetConstructor(JSReceiver receiver) {
   Isolate* isolate = receiver.GetIsolate();
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   HandleScope scope(isolate);
   MaybeHandle<JSFunction> maybe_constructor =
       JSReceiver::GetConstructor(handle(receiver, isolate));
@@ -1443,7 +1470,7 @@ JSFunction V8HeapExplorer::GetConstructor(JSReceiver receiver) {
 String V8HeapExplorer::GetConstructorName(JSObject object) {
   Isolate* isolate = object.GetIsolate();
   if (object.IsJSFunction()) return ReadOnlyRoots(isolate).closure_string();
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   HandleScope scope(isolate);
   return *JSReceiver::GetConstructorName(handle(object, isolate));
 }
@@ -1481,10 +1508,10 @@ class RootsReferencesExtractor : public RootVisitor {
                          OffHeapObjectSlot start,
                          OffHeapObjectSlot end) override {
     DCHECK_EQ(root, Root::kStringTable);
-    IsolateRoot isolate = Isolate::FromHeap(explorer_->heap_);
+    PtrComprCageBase cage_base = Isolate::FromHeap(explorer_->heap_);
     for (OffHeapObjectSlot p = start; p < end; ++p) {
       explorer_->SetGcSubrootReference(root, description, visiting_weak_roots_,
-                                       p.load(isolate));
+                                       p.load(cage_base));
     }
   }
 
@@ -1990,6 +2017,9 @@ void NativeObjectsExplorer::MergeNodeIntoEntry(
   entry->set_name(MergeNames(
       names_, EmbedderGraphNodeName(names_, original_node), entry->name()));
   entry->set_type(EmbedderGraphNodeType(original_node));
+  DCHECK_GE(entry->self_size() + original_node->SizeInBytes(),
+            entry->self_size());
+  entry->add_self_size(original_node->SizeInBytes());
 }
 
 HeapEntry* NativeObjectsExplorer::EntryForEmbedderGraphNode(
@@ -2019,7 +2049,7 @@ bool NativeObjectsExplorer::IterateAndExtractReferences(
   if (FLAG_heap_profiler_use_embedder_graph &&
       snapshot_->profiler()->HasBuildEmbedderGraphCallback()) {
     v8::HandleScope scope(reinterpret_cast<v8::Isolate*>(isolate_));
-    DisallowHeapAllocation no_allocation;
+    DisallowGarbageCollection no_gc;
     EmbedderGraphImpl graph;
     snapshot_->profiler()->BuildEmbedderGraph(isolate_, &graph);
     for (const auto& node : graph.nodes()) {
@@ -2070,7 +2100,7 @@ HeapSnapshotGenerator::HeapSnapshotGenerator(
 }
 
 namespace {
-class NullContextForSnapshotScope {
+class V8_NODISCARD NullContextForSnapshotScope {
  public:
   explicit NullContextForSnapshotScope(Isolate* isolate)
       : isolate_(isolate), prev_(isolate->context()) {
@@ -2196,7 +2226,7 @@ class OutputStreamWriter {
     const char* s_end = s + n;
     while (s < s_end) {
       int s_chunk_size =
-          Min(chunk_size_ - chunk_pos_, static_cast<int>(s_end - s));
+          std::min(chunk_size_ - chunk_pos_, static_cast<int>(s_end - s));
       DCHECK_GT(s_chunk_size, 0);
       MemCopy(chunk_.begin() + chunk_pos_, s, s_chunk_size);
       s += s_chunk_size;

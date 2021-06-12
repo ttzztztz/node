@@ -7,6 +7,8 @@ added: v8.5.0
 changes:
   - version:
     - v15.3.0
+    - v14.17.0
+    - v12.22.0
     pr-url: https://github.com/nodejs/node/pull/35781
     description: Stabilize modules implementation.
   - version:
@@ -204,6 +206,10 @@ import _ from 'data:application/json,"world!"';
 added:
   - v14.13.1
   - v12.20.0
+changes:
+  - version: v16.0.0
+    pr-url: https://github.com/nodejs/node/pull/37246
+    description: Added `node:` import support to `require(...)`.
 -->
 
 `node:` URLs are supported as an alternative means to load Node.js builtin
@@ -275,8 +281,20 @@ const buffer = readFileSync(new URL('./data.proto', import.meta.url));
 ```
 
 ### `import.meta.resolve(specifier[, parent])`
+<!--
+added:
+  - v13.9.0
+  - v12.16.2
+changes:
+  - version: v16.2.0
+    pr-url: https://github.com/nodejs/node/pull/38587
+    description: Add support for WHATWG `URL` object to `parentURL` parameter.
+-->
 
 > Stability: 1 - Experimental
+
+This feature is only available with the `--experimental-import-meta-resolve`
+command flag enabled.
 
 * `specifier` {string} The module specifier to resolve relative to `parent`.
 * `parent` {string|URL} The absolute parent module URL to resolve from. If none
@@ -369,7 +387,7 @@ analysis process.
 
 For example, consider a CommonJS module written:
 
-```js
+```cjs
 // cjs.cjs
 exports.name = 'exported';
 ```
@@ -435,13 +453,13 @@ import { readFile } from 'fs/promises';
 const json = JSON.parse(await readFile(new URL('./dat.json', import.meta.url)));
 ```
 
-Alterantively `module.createRequire()` can be used.
+Alternatively `module.createRequire()` can be used.
 
 #### No Native Module Loading
 
 Native modules are not currently supported with ES module imports.
 
-The can instead be loaded with [`module.createRequire()`][] or
+They can instead be loaded with [`module.createRequire()`][] or
 [`process.dlopen`][].
 
 #### No `require.resolve`
@@ -1328,7 +1346,7 @@ success!
 [`transformSource` hook]: #esm_transformsource_source_context_defaulttransformsource
 [`string`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String
 [`util.TextDecoder`]: util.md#util_class_util_textdecoder
-[cjs-module-lexer]: https://github.com/guybedford/cjs-module-lexer/tree/1.0.0
+[cjs-module-lexer]: https://github.com/guybedford/cjs-module-lexer/tree/1.2.1
 [custom https loader]: #esm_https_loader
 [special scheme]: https://url.spec.whatwg.org/#special-scheme
 [the official standard format]: https://tc39.github.io/ecma262/#sec-modules

@@ -101,7 +101,7 @@ class FixedArray
  public:
   // Setter and getter for elements.
   inline Object get(int index) const;
-  inline Object get(IsolateRoot isolate, int index) const;
+  inline Object get(PtrComprCageBase cage_base, int index) const;
 
   static inline Handle<Object> get(FixedArray array, int index,
                                    Isolate* isolate);
@@ -111,12 +111,21 @@ class FixedArray
       Isolate* isolate, Handle<FixedArray> array, int index,
       Handle<Object> value);
 
-  // Synchronized setters and getters.
-  inline Object synchronized_get(int index) const;
-  inline Object synchronized_get(IsolateRoot isolate, int index) const;
-  // Currently only Smis are written with release semantics, hence we can avoid
-  // a write barrier.
-  inline void synchronized_set(int index, Smi value);
+  // Relaxed accessors.
+  inline Object get(int index, RelaxedLoadTag) const;
+  inline Object get(PtrComprCageBase cage_base, int index,
+                    RelaxedLoadTag) const;
+  inline void set(int index, Object value, RelaxedStoreTag,
+                  WriteBarrierMode mode = UPDATE_WRITE_BARRIER);
+  inline void set(int index, Smi value, RelaxedStoreTag);
+
+  // Acquire/release accessors.
+  inline Object get(int index, AcquireLoadTag) const;
+  inline Object get(PtrComprCageBase cage_base, int index,
+                    AcquireLoadTag) const;
+  inline void set(int index, Object value, ReleaseStoreTag,
+                  WriteBarrierMode mode = UPDATE_WRITE_BARRIER);
+  inline void set(int index, Smi value, ReleaseStoreTag);
 
   // Setter that uses write barrier.
   inline void set(int index, Object value);
@@ -279,7 +288,7 @@ class WeakFixedArray
     : public TorqueGeneratedWeakFixedArray<WeakFixedArray, HeapObject> {
  public:
   inline MaybeObject Get(int index) const;
-  inline MaybeObject Get(IsolateRoot isolate, int index) const;
+  inline MaybeObject Get(PtrComprCageBase cage_base, int index) const;
 
   inline void Set(
       int index, MaybeObject value,
@@ -354,7 +363,7 @@ class WeakArrayList
   V8_EXPORT_PRIVATE void Compact(Isolate* isolate);
 
   inline MaybeObject Get(int index) const;
-  inline MaybeObject Get(IsolateRoot isolate, int index) const;
+  inline MaybeObject Get(PtrComprCageBase cage_base, int index) const;
 
   // Set the element at index to obj. The underlying array must be large enough.
   // If you need to grow the WeakArrayList, use the static AddToEnd() method
@@ -425,9 +434,7 @@ class WeakArrayList::Iterator {
  private:
   int index_;
   WeakArrayList array_;
-#ifdef DEBUG
-  DisallowHeapAllocation no_gc_;
-#endif  // DEBUG
+  DISALLOW_GARBAGE_COLLECTION(no_gc_)
 };
 
 // Generic array grows dynamically with O(1) amortized insertion.
@@ -456,7 +463,7 @@ class ArrayList : public TorqueGeneratedArrayList<ArrayList, FixedArray> {
   // storage capacity, i.e., length().
   inline void SetLength(int length);
   inline Object Get(int index) const;
-  inline Object Get(IsolateRoot isolate, int index) const;
+  inline Object Get(PtrComprCageBase cage_base, int index) const;
   inline ObjectSlot Slot(int index);
 
   // Set the element at index to obj. The underlying array must be large enough.
@@ -602,7 +609,7 @@ class TemplateList
   static Handle<TemplateList> New(Isolate* isolate, int size);
   inline int length() const;
   inline Object get(int index) const;
-  inline Object get(IsolateRoot isolate, int index) const;
+  inline Object get(PtrComprCageBase cage_base, int index) const;
   inline void set(int index, Object value);
   static Handle<TemplateList> Add(Isolate* isolate, Handle<TemplateList> list,
                                   Handle<Object> value);

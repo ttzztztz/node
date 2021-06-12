@@ -83,6 +83,13 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   }
   void LeaveFrame(StackFrame::Type type);
 
+  void AllocateStackSpace(Register bytes) { Subu(sp, sp, bytes); }
+  void AllocateStackSpace(int bytes) {
+    DCHECK_GE(bytes, 0);
+    if (bytes == 0) return;
+    Subu(sp, sp, Operand(bytes));
+  }
+
   // Generates function and stub prologue code.
   void StubPrologue(StackFrame::Type type);
   void Prologue();
@@ -227,7 +234,8 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
     // TODO(mips): Implement.
     UNIMPLEMENTED();
   }
-  void JumpCodeObject(Register code_object) override {
+  void JumpCodeObject(Register code_object,
+                      JumpMode jump_mode = JumpMode::kJump) override {
     // TODO(mips): Implement.
     UNIMPLEMENTED();
   }
@@ -238,7 +246,7 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   void StoreReturnAddressAndCall(Register target);
 
   void CallForDeoptimization(Builtins::Name target, int deopt_id, Label* exit,
-                             DeoptimizeKind kind,
+                             DeoptimizeKind kind, Label* ret,
                              Label* jump_deoptimization_entry_label);
 
   void Ret(COND_ARGS);
@@ -780,6 +788,8 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   void LoadRoot(Register destination, RootIndex index, Condition cond,
                 Register src1, const Operand& src2);
 
+  void LoadMap(Register destination, Register object);
+
   // If the value is a NaN, canonicalize the value else, do nothing.
   void FPUCanonicalizeNaN(const DoubleRegister dst, const DoubleRegister src);
 
@@ -900,7 +910,7 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
 
   void CallRecordWriteStub(Register object, Register address,
                            RememberedSetAction remembered_set_action,
-                           SaveFPRegsMode fp_mode, Handle<Code> code_target,
+                           SaveFPRegsMode fp_mode, int builtin_index,
                            Address wasm_target);
 };
 
@@ -978,17 +988,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
 
   void Pref(int32_t hint, const MemOperand& rs);
 
-  // Truncates a double using a specific rounding mode, and writes the value
-  // to the result register.
-  // The except_flag will contain any exceptions caused by the instruction.
-  // If check_inexact is kDontCheckForInexactConversion, then the inexact
-  // exception is masked.
-  void EmitFPUTruncate(
-      FPURoundingMode rounding_mode, Register result,
-      DoubleRegister double_input, Register scratch,
-      DoubleRegister double_scratch, Register except_flag,
-      CheckForInexactConversion check_inexact = kDontCheckForInexactConversion);
-
   // Enter exit frame.
   // argc - argument count to be dropped by LeaveExitFrame.
   // save_doubles - saves FPU registers on stack, currently disabled.
@@ -1001,17 +1000,15 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
                       bool do_return = NO_EMIT_RETURN,
                       bool argument_count_is_length = false);
 
-  void LoadMap(Register destination, Register object);
-
   // Make sure the stack is aligned. Only emits code in debug mode.
   void AssertStackIsAligned();
 
   // Load the global proxy from the current context.
   void LoadGlobalProxy(Register dst) {
-    LoadNativeContextSlot(Context::GLOBAL_PROXY_INDEX, dst);
+    LoadNativeContextSlot(dst, Context::GLOBAL_PROXY_INDEX);
   }
 
-  void LoadNativeContextSlot(int index, Register dst);
+  void LoadNativeContextSlot(Register dst, int index);
 
   // -------------------------------------------------------------------------
   // JavaScript invokes.
@@ -1051,6 +1048,9 @@ class V8_EXPORT_PRIVATE MacroAssembler : public TurboAssembler {
   // Support functions.
 
   void GetObjectType(Register function, Register map, Register type_reg);
+
+  void GetInstanceTypeRange(Register map, Register type_reg,
+                            InstanceType lower_limit, Register range);
 
   // -------------------------------------------------------------------------
   // Runtime calls.

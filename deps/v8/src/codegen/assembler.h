@@ -169,6 +169,11 @@ struct V8_EXPORT_PRIVATE AssemblerOptions {
   // Enables the use of isolate-independent builtins through an off-heap
   // trampoline. (macro assembler feature).
   bool inline_offheap_trampolines = true;
+  // Enables generation of pc-relative calls to builtins if the off-heap
+  // builtins are guaranteed to be within the reach of pc-relative call or jump
+  // instructions. For example, when the bultins code is re-embedded into the
+  // code range.
+  bool short_builtin_calls = false;
   // On some platforms, all code is within a given range in the process,
   // and the start of this range is configured here.
   Address code_range_start = 0;
@@ -388,7 +393,7 @@ class V8_EXPORT_PRIVATE AssemblerBase : public Malloced {
 };
 
 // Avoids emitting debug code during the lifetime of this scope object.
-class DontEmitDebugCodeScope {
+class V8_NODISCARD DontEmitDebugCodeScope {
  public:
   explicit DontEmitDebugCodeScope(AssemblerBase* assembler)
       : assembler_(assembler), old_value_(assembler->emit_debug_code()) {
@@ -402,7 +407,7 @@ class DontEmitDebugCodeScope {
 };
 
 // Enable a specified feature within a scope.
-class V8_EXPORT_PRIVATE CpuFeatureScope {
+class V8_EXPORT_PRIVATE V8_NODISCARD CpuFeatureScope {
  public:
   enum CheckPolicy {
     kCheckSupported,

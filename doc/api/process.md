@@ -457,6 +457,15 @@ of the custom deprecation.
 The `*-deprecation` command-line flags only affect warnings that use the name
 `'DeprecationWarning'`.
 
+### Event: `'worker'`
+<!-- YAML
+added: v16.2.0
+-->
+
+* `worker` {Worker} The {Worker} that was created.
+
+The `'worker'` event is emitted after a new {Worker} thread has been created.
+
 #### Emitting custom warnings
 
 See the [`process.emitWarning()`][process_emit_warning] method for issuing
@@ -760,7 +769,7 @@ This feature is not available in [`Worker`][] threads.
 <!-- YAML
 added: v0.7.7
 changes:
-  - version: REPLACEME
+  - version: v16.0.0
     pr-url: https://github.com/nodejs/node/pull/36902
     description: Modifying process.config has been deprecated.
 -->
@@ -1415,6 +1424,8 @@ Indicates whether a callback has been set using
 added: v0.7.6
 -->
 
+> Stability: 3 - Legacy. Use [`process.hrtime.bigint()`][] instead.
+
 * `time` {integer[]} The result of a previous call to `process.hrtime()`
 * Returns: {integer[]}
 
@@ -1730,6 +1741,70 @@ function definitelyAsync(arg, cb) {
 }
 ```
 
+### When to use `queueMicrotask()` vs. `process.nextTick()`
+
+The [`queueMicrotask()`][] API is an alternative to `process.nextTick()` that
+also defers execution of a function using the same microtask queue used to
+execute the then, catch, and finally handlers of resolved promises. Within
+Node.js, every time the "next tick queue" is drained, the microtask queue
+is drained immediately after.
+
+```js
+Promise.resolve().then(() => console.log(2));
+queueMicrotask(() => console.log(3));
+process.nextTick(() => console.log(1));
+// Output:
+// 1
+// 2
+// 3
+```
+
+For *most* userland use cases, the `queueMicrotask()` API provides a portable
+and reliable mechanism for deferring execution that works across multiple
+JavaScript platform environments and should be favored over `process.nextTick()`.
+In simple scenarios, `queueMicrotask()` can be a drop-in replacement for
+`process.nextTick()`.
+
+```js
+console.log('start');
+queueMicrotask(() => {
+  console.log('microtask callback');
+});
+console.log('scheduled');
+// Output:
+// start
+// scheduled
+// microtask callback
+```
+
+One note-worthy difference between the two APIs is that `process.nextTick()`
+allows specifying additional values that will be passed as arguments to the
+deferred function when it is called. Achieving the same result with
+`queueMicrotask()` requires using either a closure or a bound function:
+
+```js
+function deferred(a, b) {
+  console.log('microtask', a + b);
+}
+
+console.log('start');
+queueMicrotask(deferred.bind(undefined, 1, 2));
+console.log('scheduled');
+// Output:
+// start
+// scheduled
+// microtask 3
+```
+
+There are minor differences in the way errors raised from within the next tick
+queue and microtask queue are handled. Errors thrown within a queued microtask
+callback should be handled within the queued callback when possible. If they are
+not, the `process.on('uncaughtException')` event handler can be used to capture
+and handle the errors.
+
+When in doubt, unless the specific capabilities of `process.nextTick()` are
+needed, use `queueMicrotask()`.
+
 ## `process.noDeprecation`
 <!-- YAML
 added: v0.8.0
@@ -1836,7 +1911,7 @@ tarball.
   that are no longer supported).
   * `'Dubnium'` for the 10.x LTS line beginning with 10.13.0.
   * `'Erbium'` for the 12.x LTS line beginning with 12.13.0.
-  For other LTS Release code names, see [Node.js Changelog Archive](https://github.com/nodejs/node/blob/master/doc/changelogs/CHANGELOG_ARCHIVE.md)
+  For other LTS Release code names, see [Node.js Changelog Archive](https://github.com/nodejs/node/blob/HEAD/doc/changelogs/CHANGELOG_ARCHIVE.md)
 
 <!-- eslint-skip -->
 ```js
@@ -1953,7 +2028,7 @@ console.log(data.header.nodejsVersion);
 
 // Similar to process.report.writeReport()
 const fs = require('fs');
-fs.writeFileSync(util.inspect(data), 'my-report.log', 'utf8');
+fs.writeFileSync('my-report.log', util.inspect(data), 'utf8');
 ```
 
 Additional documentation is available in the [report documentation][].
@@ -1964,6 +2039,7 @@ added: v11.12.0
 changes:
   - version:
      - v15.0.0
+     - v14.17.0
     pr-url: https://github.com/nodejs/node/pull/35654
     description: This API is no longer experimental.
 -->
@@ -2679,7 +2755,7 @@ cases:
   code will be `128` + `6`, or `134`.
 
 [Advanced serialization for `child_process`]: child_process.md#child_process_advanced_serialization
-[Android building]: https://github.com/nodejs/node/blob/master/BUILDING.md#androidandroid-based-devices-eg-firefox-os
+[Android building]: https://github.com/nodejs/node/blob/HEAD/BUILDING.md#androidandroid-based-devices-eg-firefox-os
 [Child Process]: child_process.md
 [Cluster]: cluster.md
 [Duplex]: stream.md#stream_duplex_and_transform_streams
@@ -2720,6 +2796,7 @@ cases:
 [`process.kill()`]: #process_process_kill_pid_signal
 [`process.setUncaughtExceptionCaptureCallback()`]: process.md#process_process_setuncaughtexceptioncapturecallback_fn
 [`promise.catch()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/catch
+[`queueMicrotask()`]: globals.md#globals_queuemicrotask_callback
 [`readable.read()`]: stream.md#stream_readable_read_size
 [`require()`]: globals.md#globals_require
 [`require.main`]: modules.md#modules_accessing_the_main_module

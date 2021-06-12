@@ -292,13 +292,21 @@ EnvironmentOptionsParser::EnvironmentOptionsParser() {
             "additional user conditions for conditional exports and imports",
             &EnvironmentOptions::conditions,
             kAllowedInEnvironment);
+  AddAlias("-C", "--conditions");
   AddOption("--diagnostic-dir",
             "set dir for all output files"
             " (default: current working directory)",
             &EnvironmentOptions::diagnostic_dir,
             kAllowedInEnvironment);
+  AddOption("--dns-result-order",
+            "set default value of verbatim in dns.lookup. Options are "
+            "'ipv4first' (IPv4 addresses are placed before IPv6 addresses) "
+            "'verbatim' (addresses are in the order the DNS resolver "
+            "returned)",
+            &EnvironmentOptions::dns_result_order,
+            kAllowedInEnvironment);
   AddOption("--enable-source-maps",
-            "experimental Source Map V3 support",
+            "Source Map V3 support for stack traces",
             &EnvironmentOptions::enable_source_maps,
             kAllowedInEnvironment);
   AddOption("--experimental-abortcontroller", "",
@@ -500,8 +508,12 @@ EnvironmentOptionsParser::EnvironmentOptionsParser() {
             &EnvironmentOptions::trace_warnings,
             kAllowedInEnvironment);
   AddOption("--unhandled-rejections",
-            "define unhandled rejections behavior. Options are 'strict' (raise "
-            "an error), 'warn' (enforce warnings) or 'none' (silence warnings)",
+            "define unhandled rejections behavior. Options are 'strict' "
+            "(always raise an error), 'throw' (raise an error unless "
+            "'unhandledRejection' hook is set), 'warn' (log a warning), 'none' "
+            "(silence warnings), 'warn-with-error-code' (log a warning and set "
+            "exit code 1 unless 'unhandledRejection' hook is set). (default: "
+            "throw)",
             &EnvironmentOptions::unhandled_rejections,
             kAllowedInEnvironment);
   AddOption("--verify-base-objects",
@@ -725,7 +737,7 @@ PerProcessOptionsParser::PerProcessOptionsParser(
   AddOption("--icu-data-dir",
             "set ICU data load path to dir (overrides NODE_ICU_DATA)"
 #ifndef NODE_HAVE_SMALL_ICU
-            " (note: linked-in ICU data is present)\n"
+            " (note: linked-in ICU data is present)"
 #endif
             ,
             &PerProcessOptions::icu_data_dir,
@@ -766,7 +778,6 @@ PerProcessOptionsParser::PerProcessOptionsParser(
             &PerProcessOptions::ssl_openssl_cert_store);
   Implies("--use-openssl-ca", "[ssl_openssl_cert_store]");
   ImpliesNot("--use-bundled-ca", "[ssl_openssl_cert_store]");
-#if NODE_FIPS_MODE
   AddOption("--enable-fips",
             "enable FIPS crypto at startup",
             &PerProcessOptions::enable_fips_crypto,
@@ -775,7 +786,6 @@ PerProcessOptionsParser::PerProcessOptionsParser(
             "force FIPS crypto (cannot be disabled)",
             &PerProcessOptions::force_fips_crypto,
             kAllowedInEnvironment);
-#endif
   AddOption("--secure-heap",
             "total size of the OpenSSL secure heap",
             &PerProcessOptions::secure_heap,

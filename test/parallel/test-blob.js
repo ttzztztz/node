@@ -3,6 +3,7 @@
 const common = require('../common');
 const assert = require('assert');
 const { Blob } = require('buffer');
+const { inspect } = require('util');
 
 {
   const b = new Blob();
@@ -19,10 +20,6 @@ assert.throws(() => new Blob('hello'), {
 });
 
 assert.throws(() => new Blob({}), {
-  code: 'ERR_INVALID_ARG_TYPE'
-});
-
-assert.throws(() => new Blob(['test', 1]), {
   code: 'ERR_INVALID_ARG_TYPE'
 });
 
@@ -43,15 +40,9 @@ assert.throws(() => new Blob(['test', 1]), {
 }
 
 {
-  assert.throws(() => new Blob([], { type: 1 }), {
-    code: 'ERR_INVALID_ARG_TYPE'
-  });
-  assert.throws(() => new Blob([], { type: false }), {
-    code: 'ERR_INVALID_ARG_TYPE'
-  });
-  assert.throws(() => new Blob([], { type: {} }), {
-    code: 'ERR_INVALID_ARG_TYPE'
-  });
+  assert.strictEqual(new Blob([], { type: 1 }).type, '1');
+  assert.strictEqual(new Blob([], { type: false }).type, 'false');
+  assert.strictEqual(new Blob([], { type: {} }).type, '[object object]');
 }
 
 {
@@ -110,7 +101,7 @@ assert.throws(() => new Blob(['test', 1]), {
       'e',
       'l',
       'lo',
-      Buffer.from('world')
+      Buffer.from('world'),
     ]);
   assert.strictEqual(b.size, 10);
   b.text().then(common.mustCall((text) => {
@@ -145,24 +136,22 @@ assert.throws(() => new Blob(['test', 1]), {
   }));
 
   const g = f.slice(1, -1);
-  assert.strictEqual(g.type, 'foo');
+  assert.strictEqual(g.type, '');
   g.text().then(common.mustCall((text) => {
     assert.strictEqual(text, '');
   }));
 
+  const h = b.slice(-1, 1);
+  assert.strictEqual(h.size, 0);
+
+  const i = b.slice(1, 100);
+  assert.strictEqual(i.size, 9);
+
+  const j = b.slice(1, 2, false);
+  assert.strictEqual(j.type, 'false');
+
   assert.strictEqual(b.size, 10);
   assert.strictEqual(b.type, '');
-
-  assert.throws(() => b.slice(-1, 1), {
-    code: 'ERR_OUT_OF_RANGE'
-  });
-  assert.throws(() => b.slice(1, 100), {
-    code: 'ERR_OUT_OF_RANGE'
-  });
-
-  assert.throws(() => b.slice(1, 2, false), {
-    code: 'ERR_INVALID_ARG_TYPE'
-  });
 }
 
 {
@@ -194,4 +183,18 @@ assert.throws(() => new Blob(['test', 1]), {
     value: 'Blob',
     writable: false
   });
+}
+
+{
+  const b = new Blob(['test', 42]);
+  b.text().then(common.mustCall((text) => {
+    assert.strictEqual(text, 'test42');
+  }));
+}
+
+{
+  const b = new Blob();
+  assert.strictEqual(inspect(b, { depth: null }),
+                     'Blob { size: 0, type: \'\' }');
+  assert.strictEqual(inspect(b, { depth: -1 }), '[Blob]');
 }

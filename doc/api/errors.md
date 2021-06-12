@@ -714,6 +714,22 @@ Used when a child process is being forked without specifying an IPC channel.
 Used when the main process is trying to read data from the child process's
 STDERR/STDOUT, and the data's length is longer than the `maxBuffer` option.
 
+<a id="ERR_CLOSED_MESSAGE_PORT"></a>
+### `ERR_CLOSED_MESSAGE_PORT`
+<!--
+added: v16.2.0
+changes:
+  - version: 11.12.0
+    pr-url: https://github.com/nodejs/node/pull/26487
+    description: The error message was removed.
+  - version: v16.2.0
+    pr-url: https://github.com/nodejs/node/pull/38510
+    description: The error message was reintroduced.
+-->
+
+There was an attempt to use a `MessagePort` instance in a closed
+state, usually after `.close()` has been called.
+
 <a id="ERR_CONSOLE_WRITABLE_STREAM"></a>
 ### `ERR_CONSOLE_WRITABLE_STREAM`
 
@@ -1364,6 +1380,15 @@ When setting the priority for an HTTP/2 stream, the stream may be marked as
 a dependency for a parent stream. This error code is used when an attempt is
 made to mark a stream and dependent of itself.
 
+<a id="ERR_HTTP2_TOO_MANY_INVALID_FRAMES"></a>
+### `ERR_HTTP2_TOO_MANY_INVALID_FRAMES`
+<!--
+added: v15.14.0
+-->
+
+The limit of acceptable invalid HTTP/2 protocol frames sent by the peer,
+as specified through the `maxSessionInvalidFrames` option, has been exceeded.
+
 <a id="ERR_HTTP2_TRAILERS_ALREADY_SENT"></a>
 ### `ERR_HTTP2_TRAILERS_ALREADY_SENT`
 
@@ -1652,10 +1677,10 @@ An invalid URI was passed.
 <a id="ERR_INVALID_URL"></a>
 ### `ERR_INVALID_URL`
 
-An invalid URL was passed to the [WHATWG][WHATWG URL API]
-[`URL` constructor][`new URL(input)`] to be parsed. The thrown error object
-typically has an additional property `'input'` that contains the URL that failed
-to parse.
+An invalid URL was passed to the [WHATWG][WHATWG URL API] [`URL`
+constructor][`new URL(input)`] or the legacy [`url.parse()`][] to be parsed.
+The thrown error object typically has an additional property `'input'` that
+contains the URL that failed to parse.
 
 <a id="ERR_INVALID_URL_SCHEME"></a>
 ### `ERR_INVALID_URL_SCHEME`
@@ -1902,6 +1927,16 @@ package specifier mapping.
 The `package.json` [`"exports"`][] field does not export the requested subpath.
 Because exports are encapsulated, private internal modules that are not exported
 cannot be imported through the package resolution, unless using an absolute URL.
+
+<a id="ERR_PERFORMANCE_INVALID_TIMESTAMP"></a>
+### `ERR_PERFORMANCE_INVALID_TIMESTAMP`
+
+An invalid timestamp value was provided for a performance mark or measure.
+
+<a id="ERR_PERFORMANCE_MEASURE_INVALID_OPTIONS"></a>
+### `ERR_PERFORMANCE_MEASURE_INVALID_OPTIONS`
+
+Invalid options were provided for a performance measure.
 
 <a id="ERR_PROTO_ACCESS"></a>
 ### `ERR_PROTO_ACCESS`
@@ -2313,6 +2348,11 @@ than the parent module. Linked modules must share the same context.
 
 The linker function returned a module for which linking has failed.
 
+<a id="ERR_VM_MODULE_LINK_FAILURE"></a>
+### `ERR_VM_MODULE_LINK_FAILURE`
+
+The module was unable to be linked due to a failure.
+
 <a id="ERR_VM_MODULE_NOT_MODULE"></a>
 ### `ERR_VM_MODULE_NOT_MODULE`
 
@@ -2435,16 +2475,6 @@ removed: v12.5.0
 
 The value passed to `postMessage()` contained an object that is not supported
 for transferring.
-
-<a id="ERR_CLOSED_MESSAGE_PORT"></a>
-### `ERR_CLOSED_MESSAGE_PORT`
-<!-- YAML
-added: v10.5.0
-removed: v11.12.0
--->
-
-There was an attempt to use a `MessagePort` instance in a closed
-state, usually after `.close()` has been called.
 
 <a id="ERR_CRYPTO_HASH_DIGEST_NO_UTF16"></a>
 ### `ERR_CRYPTO_HASH_DIGEST_NO_UTF16`
@@ -2794,6 +2824,7 @@ The native call from `process.cpuUsage` could not be processed.
 [`stream.write()`]: stream.md#stream_writable_write_chunk_encoding_callback
 [`subprocess.kill()`]: child_process.md#child_process_subprocess_kill_signal
 [`subprocess.send()`]: child_process.md#child_process_subprocess_send_message_sendhandle_options_callback
+[`url.parse()`]: url.md#url_url_parse_urlstring_parsequerystring_slashesdenotehost
 [`util.getSystemErrorName(error.errno)`]: util.md#util_util_getsystemerrorname_err
 [`zlib`]: zlib.md
 [crypto digest algorithm]: crypto.md#crypto_crypto_gethashes

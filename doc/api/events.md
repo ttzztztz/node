@@ -814,6 +814,7 @@ regular `'error'` listener is installed.
 <!-- YAML
 added:
  - v15.2.0
+ - v14.17.0
 -->
 * `emitterOrTarget` {EventEmitter|EventTarget}
 * `eventName` {string|symbol}
@@ -849,6 +850,10 @@ const { getEventListeners, EventEmitter } = require('events');
 added:
  - v11.13.0
  - v10.16.0
+changes:
+  - version: v15.0.0
+    pr-url: https://github.com/nodejs/node/pull/34912
+    description: The `signal` option is supported now.
 -->
 
 * `emitter` {EventEmitter}
@@ -1137,7 +1142,7 @@ setMaxListeners(5, target, emitter);
 <!-- YAML
 added: v14.5.0
 changes:
-  - version: REPLACEME
+  - version: v16.0.0
     pr-url: https://github.com/nodejs/node/pull/37237
     description: changed EventTarget error handling.
   - version: v15.4.0

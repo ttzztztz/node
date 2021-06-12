@@ -7,7 +7,7 @@
 
 #include <memory>
 
-#include "src/deoptimizer/deoptimizer.h"
+#include "src/deoptimizer/deoptimized-frame-info.h"
 #include "src/execution/isolate.h"
 #include "src/execution/v8threads.h"
 #include "src/objects/objects.h"
@@ -22,6 +22,8 @@ class WasmFrame;
 class FrameInspector {
  public:
   FrameInspector(CommonFrame* frame, int inlined_frame_index, Isolate* isolate);
+  FrameInspector(const FrameInspector&) = delete;
+  FrameInspector& operator=(const FrameInspector&) = delete;
 
   ~FrameInspector();
 
@@ -36,7 +38,9 @@ class FrameInspector {
 
   Handle<String> GetFunctionName() { return function_name_; }
 
+#if V8_ENABLE_WEBASSEMBLY
   bool IsWasm();
+#endif  // V8_ENABLE_WEBASSEMBLY
   bool IsJavaScript();
 
   JavaScriptFrame* javascript_frame();
@@ -57,11 +61,7 @@ class FrameInspector {
   Handle<String> function_name_;
   int source_position_ = -1;
   bool is_optimized_ = false;
-  bool is_interpreted_ = false;
-  bool has_adapted_arguments_ = false;
   bool is_constructor_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(FrameInspector);
 };
 
 class RedirectActiveFunctions : public ThreadVisitor {
@@ -78,7 +78,7 @@ class RedirectActiveFunctions : public ThreadVisitor {
  private:
   SharedFunctionInfo shared_;
   Mode mode_;
-  DisallowHeapAllocation no_gc_;
+  DISALLOW_GARBAGE_COLLECTION(no_gc_)
 };
 
 }  // namespace internal

@@ -32,7 +32,7 @@ properties:
   using `napi_get_last_error_info`. More information can be found in the error
   handling section [Error handling][].
 
-Node-API-API is a C API that ensures ABI stability across Node.js versions
+Node-API is a C API that ensures ABI stability across Node.js versions
 and different compiler levels. A C++ API can be easier to use.
 To support using C++, the project maintains a
 C++ wrapper module called [`node-addon-api`][].
@@ -160,9 +160,9 @@ the native addon.
 
 #### node-gyp
 
-[node-gyp][] is a build system based on Google's [GYP][] tool and comes
-bundled with npm. GYP, and therefore node-gyp, requires that Python be
-installed.
+[node-gyp][] is a build system based on the [gyp-next][] fork of
+Google's [GYP][] tool and comes bundled with npm. GYP, and therefore node-gyp,
+requires that Python be installed.
 
 Historically, node-gyp has been the tool of choice for building native
 addons. It has widespread adoption and documentation. However, some
@@ -286,17 +286,20 @@ listed as supporting a later version.
     <th scope="col">5</th>
     <th scope="col">6</th>
     <th scope="col">7</th>
+    <th scope="col">8</th>
   </tr>
   <tr>
     <th scope="row">v10.x</th>
     <td>v10.16.0</td>
     <td>v10.17.0</td>
     <td>v10.20.0</td>
+    <td>v10.23.0</td>
     <td></td>
   </tr>
   <tr>
     <th scope="row">v11.x</th>
     <td>v11.8.0</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -307,11 +310,13 @@ listed as supporting a later version.
     <td>v12.11.0</td>
     <td>v12.17.0</td>
     <td>v12.19.0</td>
+    <td>v12.22.0</td>
   </tr>
   <tr>
     <th scope="row">v13.x</th>
     <td>v13.0.0</td>
     <td>v13.0.0</td>
+    <td></td>
     <td></td>
     <td></td>
   </tr>
@@ -321,6 +326,23 @@ listed as supporting a later version.
     <td>v14.0.0</td>
     <td>v14.0.0</td>
     <td>v14.12.0</td>
+    <td></td>
+  </tr>
+  <tr>
+    <th scope="row">v15.x</th>
+    <td>v15.0.0</td>
+    <td>v15.0.0</td>
+    <td>v15.0.0</td>
+    <td>v15.0.0</td>
+    <td>v15.12.0</td>
+  </tr>
+  <tr>
+    <th scope="row">v16.x</th>
+    <td>v16.0.0</td>
+    <td>v16.0.0</td>
+    <td>v16.0.0</td>
+    <td>v16.0.0</td>
+    <td>v16.0.0</td>
   </tr>
 </table>
 
@@ -689,6 +711,7 @@ For more details, review the [Object lifetime management][].
 added:
   - v14.8.0
   - v12.19.0
+napiVersion: 8
 -->
 
 A 128-bit value stored as two unsigned 64-bit integers. It serves as a UUID
@@ -1275,9 +1298,9 @@ napiVersion: 1
 
 ```c
 NAPI_NO_RETURN void napi_fatal_error(const char* location,
-                                                 size_t location_len,
-                                                 const char* message,
-                                                 size_t message_len);
+                                     size_t location_len,
+                                     const char* message,
+                                     size_t message_len);
 ```
 
 * `[in] location`: Optional location at which the error occurred.
@@ -1703,6 +1726,7 @@ with `napi_add_env_cleanup_hook`, otherwise the process will abort.
 added:
   - v14.8.0
   - v12.19.0
+napiVersion: 8
 changes:
   - version:
     - v14.10.0
@@ -1710,8 +1734,6 @@ changes:
     pr-url: https://github.com/nodejs/node/pull/34819
     description: Changed signature of the `hook` callback.
 -->
-
-> Stability: 1 - Experimental
 
 ```c
 NAPI_EXTERN napi_status napi_add_async_cleanup_hook(
@@ -1753,8 +1775,6 @@ changes:
     pr-url: https://github.com/nodejs/node/pull/34819
     description: Removed `env` parameter.
 -->
-
-> Stability: 1 - Experimental
 
 ```c
 NAPI_EXTERN napi_status napi_remove_async_cleanup_hook(
@@ -4213,9 +4233,8 @@ specification).
 added:
   - v14.14.0
   - v12.20.0
+napiVersion: 8
 -->
-
-> Stability: 1 - Experimental
 
 ```c
 napi_status napi_object_freeze(napi_env env,
@@ -4240,9 +4259,8 @@ ECMA-262 specification.
 added:
   - v14.14.0
   - v12.20.0
+napiVersion: 8
 -->
-
-> Stability: 1 - Experimental
 
 ```c
 napi_status napi_object_seal(napi_env env,
@@ -4905,9 +4923,8 @@ JavaScript object becomes garbage-collected.
 added:
   - v14.8.0
   - v12.19.0
+napiVersion: 8
 -->
-
-> Stability: 1 - Experimental
 
 ```c
 napi_status napi_type_tag_object(napi_env env,
@@ -4934,9 +4951,8 @@ If the object already has an associated type tag, this API will return
 added:
   - v14.8.0
   - v12.19.0
+napiVersion: 8
 -->
-
-> Stability: 1 - Experimental
 
 ```c
 napi_status napi_check_object_type_tag(napi_env env,
@@ -5963,7 +5979,9 @@ This API may only be called from the main thread.
 ## node_api_get_module_file_name
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v15.9.0
+  - v12.22.0
 -->
 
 > Stability: 1 - Experimental
@@ -6089,7 +6107,7 @@ the add-on's file name during loading.
 [`napi_unwrap`]: #n_api_napi_unwrap
 [`napi_wrap`]: #n_api_napi_wrap
 [`node-addon-api`]: https://github.com/nodejs/node-addon-api
-[`node_api.h`]: https://github.com/nodejs/node/blob/master/src/node_api.h
+[`node_api.h`]: https://github.com/nodejs/node/blob/HEAD/src/node_api.h
 [`process.release`]: process.md#process_process_release
 [`uv_ref`]: https://docs.libuv.org/en/v1.x/handle.html#c.uv_ref
 [`uv_unref`]: https://docs.libuv.org/en/v1.x/handle.html#c.uv_unref
@@ -6097,6 +6115,7 @@ the add-on's file name during loading.
 [context-aware addons]: addons.md#addons_context_aware_addons
 [docs]: https://github.com/nodejs/node-addon-api#api-documentation
 [global scope]: globals.md
+[gyp-next]: https://github.com/nodejs/gyp-next
 [module scope]: modules.md#modules_the_module_scope
 [node-gyp]: https://github.com/nodejs/node-gyp
 [node-pre-gyp]: https://github.com/mapbox/node-pre-gyp

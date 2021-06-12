@@ -36,6 +36,18 @@ void RecordWriteDescriptor::InitializePlatformSpecific(
   data->InitializePlatformSpecific(kParameterCount, default_stub_registers);
 }
 
+void DynamicCheckMapsDescriptor::InitializePlatformSpecific(
+    CallInterfaceDescriptorData* data) {
+  Register default_stub_registers[] = {eax, ecx, edx, edi, esi};
+
+  data->RestrictAllocatableRegisters(default_stub_registers,
+                                     arraysize(default_stub_registers));
+
+  CHECK_LE(static_cast<size_t>(kParameterCount),
+           arraysize(default_stub_registers));
+  data->InitializePlatformSpecific(kParameterCount, default_stub_registers);
+}
+
 void EphemeronKeyBarrierDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   static const Register default_stub_registers[] = {ecx, edx, esi, edi,
@@ -76,6 +88,11 @@ const Register ApiGetterDescriptor::CallbackRegister() { return eax; }
 
 const Register GrowArrayElementsDescriptor::ObjectRegister() { return eax; }
 const Register GrowArrayElementsDescriptor::KeyRegister() { return ecx; }
+
+const Register BaselineLeaveFrameDescriptor::ParamsSizeRegister() {
+  return esi;
+}
+const Register BaselineLeaveFrameDescriptor::WeightRegister() { return edi; }
 
 // static
 const Register TypeConversionDescriptor::ArgumentRegister() { return eax; }
@@ -201,20 +218,21 @@ void CompareDescriptor::InitializePlatformSpecific(
   data->InitializePlatformSpecific(arraysize(registers), registers);
 }
 
+void Compare_BaselineDescriptor::InitializePlatformSpecific(
+    CallInterfaceDescriptorData* data) {
+  Register registers[] = {edx, eax, ecx};
+  data->InitializePlatformSpecific(arraysize(registers), registers);
+}
+
 void BinaryOpDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
   Register registers[] = {edx, eax};
   data->InitializePlatformSpecific(arraysize(registers), registers);
 }
 
-void ArgumentsAdaptorDescriptor::InitializePlatformSpecific(
+void BinaryOp_BaselineDescriptor::InitializePlatformSpecific(
     CallInterfaceDescriptorData* data) {
-  Register registers[] = {
-      edi,  // JSFunction
-      edx,  // the new target
-      eax,  // actual number of arguments
-      ecx,  // expected number of arguments
-  };
+  Register registers[] = {edx, eax, ecx};
   data->InitializePlatformSpecific(arraysize(registers), registers);
 }
 

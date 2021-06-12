@@ -138,9 +138,7 @@ Maybe<bool> RsaKeyGenTraits::AdditionalConfig(
       Utf8Value digest(env->isolate(), args[*offset]);
       params->params.md = EVP_get_digestbyname(*digest);
       if (params->params.md == nullptr) {
-        char msg[1024];
-        snprintf(msg, sizeof(msg), "md specifies an invalid digest");
-        THROW_ERR_CRYPTO_INVALID_DIGEST(env, msg);
+        THROW_ERR_CRYPTO_INVALID_DIGEST(env, "md specifies an invalid digest");
         return Nothing<bool>();
       }
     }
@@ -150,9 +148,8 @@ Maybe<bool> RsaKeyGenTraits::AdditionalConfig(
       Utf8Value digest(env->isolate(), args[*offset + 1]);
       params->params.mgf1_md = EVP_get_digestbyname(*digest);
       if (params->params.mgf1_md == nullptr) {
-        char msg[1024];
-        snprintf(msg, sizeof(msg), "mgf1_md specifies an invalid digest");
-        THROW_ERR_CRYPTO_INVALID_DIGEST(env, msg);
+        THROW_ERR_CRYPTO_INVALID_DIGEST(env,
+          "mgf1_md specifies an invalid digest");
         return Nothing<bool>();
       }
     }
@@ -161,9 +158,9 @@ Maybe<bool> RsaKeyGenTraits::AdditionalConfig(
       CHECK(args[*offset + 2]->IsInt32());
       params->params.saltlen = args[*offset + 2].As<Int32>()->Value();
       if (params->params.saltlen < 0) {
-        char msg[1024];
-        snprintf(msg, sizeof(msg), "salt length is out of range");
-        THROW_ERR_OUT_OF_RANGE(env, msg);
+        THROW_ERR_OUT_OF_RANGE(
+          env,
+          "salt length is out of range");
         return Nothing<bool>();
       }
     }
@@ -213,7 +210,10 @@ WebCryptoCipherStatus RSA_Cipher(
   if (label_len > 0) {
     void* label = OPENSSL_memdup(params.label.get(), label_len);
     CHECK_NOT_NULL(label);
-    if (EVP_PKEY_CTX_set0_rsa_oaep_label(ctx.get(), label, label_len) <= 0) {
+    if (EVP_PKEY_CTX_set0_rsa_oaep_label(
+      ctx.get(),
+      static_cast<unsigned char*>(label),
+      label_len) <= 0) {
       OPENSSL_free(label);
       return WebCryptoCipherStatus::FAILED;
     }
@@ -371,11 +371,11 @@ Maybe<bool> ExportJWKRsaKey(
 
   // TODO(tniessen): Remove the "else" branch once we drop support for OpenSSL
   // versions older than 1.1.1e via FIPS / dynamic linking.
-  RSA* rsa;
+  const RSA* rsa;
   if (OpenSSL_version_num() >= 0x1010105fL) {
     rsa = EVP_PKEY_get0_RSA(m_pkey.get());
   } else {
-    rsa = static_cast<RSA*>(EVP_PKEY_get0(m_pkey.get()));
+    rsa = static_cast<const RSA*>(EVP_PKEY_get0(m_pkey.get()));
   }
   CHECK_NOT_NULL(rsa);
 
@@ -520,11 +520,11 @@ Maybe<bool> GetRsaKeyDetail(
 
   // TODO(tniessen): Remove the "else" branch once we drop support for OpenSSL
   // versions older than 1.1.1e via FIPS / dynamic linking.
-  RSA* rsa;
+  const RSA* rsa;
   if (OpenSSL_version_num() >= 0x1010105fL) {
     rsa = EVP_PKEY_get0_RSA(m_pkey.get());
   } else {
-    rsa = static_cast<RSA*>(EVP_PKEY_get0(m_pkey.get()));
+    rsa = static_cast<const RSA*>(EVP_PKEY_get0(m_pkey.get()));
   }
   CHECK_NOT_NULL(rsa);
 
@@ -532,10 +532,12 @@ Maybe<bool> GetRsaKeyDetail(
 
   size_t modulus_length = BN_num_bytes(n) * CHAR_BIT;
 
-  if (target->Set(
-          env->context(),
-          env->modulus_length_string(),
-          Number::New(env->isolate(), modulus_length)).IsNothing()) {
+  if (target
+          ->Set(
+              env->context(),
+              env->modulus_length_string(),
+              Number::New(env->isolate(), static_cast<double>(modulus_length)))
+          .IsNothing()) {
     return Nothing<bool>();
   }
 
@@ -557,7 +559,7 @@ void Initialize(Environment* env, Local<Object> target) {
   RSAKeyExportJob::Initialize(env, target);
   RSACipherJob::Initialize(env, target);
 
-  NODE_DEFINE_CONSTANT(target, kKeyVariantRSA_SSA_PKCS1_V1_5);
+  NODE_DEFINE_CONSTANT(target, kKeyVariantRSA_SSA_PKCS1_v1_5);
   NODE_DEFINE_CONSTANT(target, kKeyVariantRSA_PSS);
   NODE_DEFINE_CONSTANT(target, kKeyVariantRSA_OAEP);
 }

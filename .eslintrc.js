@@ -25,10 +25,7 @@ Module._findPath = (request, paths, isMain) => {
   if (!r && hacks.includes(request)) {
     try {
       return require.resolve(`./tools/node_modules/${request}`);
-    // Keep the variable in place to ensure that ESLint started by older Node.js
-    // versions work as expected.
-    // eslint-disable-next-line no-unused-vars
-    } catch (e) {
+    } catch {
       return require.resolve(
         `./tools/node_modules/eslint/node_modules/${request}`);
     }
@@ -53,12 +50,6 @@ module.exports = {
   overrides: [
     {
       files: [
-        'doc/api/esm.md',
-        'doc/api/fs.md',
-        'doc/api/module.md',
-        'doc/api/modules.md',
-        'doc/api/packages.md',
-        'doc/api/wasi.md',
         'test/es-module/test-esm-type-flag.js',
         'test/es-module/test-esm-type-flag-alias.js',
         '*.mjs',
@@ -68,8 +59,46 @@ module.exports = {
     },
     {
       files: ['**/*.md'],
-      parserOptions: { ecmaFeatures: { impliedStrict: true } },
+      processor: 'markdown/markdown',
+    },
+    {
+      files: ['**/*.md/*.cjs', '**/*.md/*.js'],
+      parserOptions: {
+        sourceType: 'script',
+        ecmaFeatures: { impliedStrict: true }
+      },
       rules: { strict: 'off' },
+    },
+    {
+      files: [
+        '**/*.md/*.mjs',
+        'doc/api/esm.md/*.js',
+        'doc/api/packages.md/*.js',
+      ],
+      parserOptions: { sourceType: 'module' },
+      rules: { 'no-restricted-globals': [
+        'error',
+        {
+          name: '__filename',
+          message: 'Use import.meta.url instead',
+        },
+        {
+          name: '__dirname',
+          message: 'Not available in ESM',
+        },
+        {
+          name: 'exports',
+          message: 'Not available in ESM',
+        },
+        {
+          name: 'module',
+          message: 'Not available in ESM',
+        },
+        {
+          name: 'require',
+          message: 'Use import instead',
+        },
+      ] },
     },
   ],
   rules: {
@@ -95,7 +124,13 @@ module.exports = {
         ignorePattern: '.*',
       },
     }],
-    'comma-dangle': ['error', 'only-multiline'],
+    'comma-dangle': ['error', {
+      arrays: 'always-multiline',
+      exports: 'only-multiline',
+      functions: 'only-multiline',
+      imports: 'only-multiline',
+      objects: 'only-multiline',
+    }],
     'comma-spacing': 'error',
     'comma-style': 'error',
     'computed-property-spacing': 'error',
@@ -126,6 +161,7 @@ module.exports = {
       code: 80,
       ignorePattern: '^// Flags:',
       ignoreRegExpLiterals: true,
+      ignoreTemplateLiterals: true,
       ignoreUrls: true,
       tabWidth: 2,
     }],
@@ -292,7 +328,7 @@ module.exports = {
     'template-curly-spacing': 'error',
     'unicode-bom': 'error',
     'use-isnan': 'error',
-    'valid-typeof': 'error',
+    'valid-typeof': ['error', { requireStringLiterals: true }],
 
     // Custom rules from eslint-plugin-node-core
     'node-core/no-unescaped-regexp-dot': 'error',
@@ -300,6 +336,7 @@ module.exports = {
   },
   globals: {
     AbortController: 'readable',
+    AbortSignal: 'readable',
     Atomics: 'readable',
     BigInt: 'readable',
     BigInt64Array: 'readable',
@@ -313,5 +350,8 @@ module.exports = {
     TextDecoder: 'readable',
     queueMicrotask: 'readable',
     globalThis: 'readable',
+    btoa: 'readable',
+    atob: 'readable',
+    performance: 'readable',
   },
 };

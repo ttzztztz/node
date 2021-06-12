@@ -34,9 +34,14 @@ const util = require('util');
 const { isMainThread } = require('worker_threads');
 
 const tmpdir = require('./tmpdir');
-const bits = ['arm64', 'mips', 'mipsel', 'ppc64', 's390x', 'x64']
+const bits = ['arm64', 'mips', 'mipsel', 'ppc64', 'riscv64', 's390x', 'x64']
   .includes(process.arch) ? 64 : 32;
 const hasIntl = !!process.config.variables.v8_enable_i18n_support;
+
+const {
+  atob,
+  btoa
+} = require('buffer');
 
 // Some tests assume a umask of 0o022 so set that up front. Tests that need a
 // different umask will set it themselves.
@@ -50,6 +55,11 @@ const noop = () => {};
 
 const hasCrypto = Boolean(process.versions.openssl) &&
                   !process.env.NODE_SKIP_CRYPTO;
+
+const hasOpenSSL3 = hasCrypto &&
+    require('crypto').constants.OPENSSL_VERSION_NUMBER >= 805306368;
+
+const hasQuic = hasCrypto && !!process.config.variables.openssl_quic;
 
 // Check for flags. Skip this for workers (both, the `cluster` module and
 // `worker_threads`) and child processes.
@@ -252,6 +262,8 @@ function platformTimeout(ms) {
 }
 
 let knownGlobals = [
+  atob,
+  btoa,
   clearImmediate,
   clearInterval,
   clearTimeout,
@@ -273,6 +285,10 @@ if (global.AbortController)
 
 if (global.gc) {
   knownGlobals.push(global.gc);
+}
+
+if (global.performance) {
+  knownGlobals.push(global.performance);
 }
 
 function allowGlobals(...allowlist) {
@@ -371,10 +387,28 @@ function _mustCallInner(fn, criteria = 1, field) {
 
   mustCallChecks.push(context);
 
-  return function() {
+  const _return = function() { // eslint-disable-line func-style
     context.actual++;
     return fn.apply(this, arguments);
   };
+  // Function instances have own properties that may be relevant.
+  // Let's replicate those properties to the returned function.
+  // Refs: https://tc39.es/ecma262/#sec-function-instances
+  Object.defineProperties(_return, {
+    name: {
+      value: fn.name,
+      writable: false,
+      enumerable: false,
+      configurable: true,
+    },
+    length: {
+      value: fn.length,
+      writable: false,
+      enumerable: false,
+      configurable: true,
+    },
+  });
+  return _return;
 }
 
 function hasMultiLocalhost() {
@@ -464,12 +498,12 @@ function nodeProcessAborted(exitCode, signal) {
   const expectedSignals = ['SIGILL', 'SIGTRAP', 'SIGABRT'];
 
   // On Windows, 'aborts' are of 2 types, depending on the context:
-  // (i) Forced access violation, if --abort-on-uncaught-exception is on
-  // which corresponds to exit code 3221225477 (0xC0000005)
+  // (i) Exception breakpoint, if --abort-on-uncaught-exception is on
+  // which corresponds to exit code 2147483651 (0x80000003)
   // (ii) Otherwise, _exit(134) which is called in place of abort() due to
   // raising SIGABRT exiting with ambiguous exit code '3' by default
   if (isWindows)
-    expectedExitCodes = [0xC0000005, 134];
+    expectedExitCodes = [0x80000003, 134];
 
   // When using --abort-on-uncaught-exception, V8 will use
   // base::OS::Abort to terminate the process.
@@ -596,7 +630,7 @@ function getArrayBufferViews(buf) {
     Uint32Array,
     Float32Array,
     Float64Array,
-    DataView
+    DataView,
   ];
 
   for (const type of arrayBufferViews) {
@@ -610,10 +644,6 @@ function getArrayBufferViews(buf) {
 
 function getBufferSources(buf) {
   return [...getArrayBufferViews(buf), new Uint8Array(buf).buffer];
-}
-
-function disableCrashOnUnhandledRejection() {
-  process.on('unhandledRejection', () => {});
 }
 
 function getTTYfd() {
@@ -696,8 +726,8 @@ function gcUntil(name, condition) {
   });
 }
 
-function requireNoPackageJSONAbove() {
-  let possiblePackage = path.join(__dirname, '..', 'package.json');
+function requireNoPackageJSONAbove(dir = __dirname) {
+  let possiblePackage = path.join(dir, '..', 'package.json');
   let lastPackage = null;
   while (possiblePackage !== lastPackage) {
     if (fs.existsSync(possiblePackage)) {
@@ -716,7 +746,6 @@ const common = {
   canCreateSymLink,
   childShouldThrowAndAbort,
   createZeroFilledFile,
-  disableCrashOnUnhandledRejection,
   expectsError,
   expectWarning,
   gcUntil,
@@ -726,6 +755,8 @@ const common = {
   getTTYfd,
   hasIntl,
   hasCrypto,
+  hasOpenSSL3,
+  hasQuic,
   hasMultiLocalhost,
   invalidArgTypeHelper,
   isAIX,

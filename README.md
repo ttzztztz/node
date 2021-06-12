@@ -21,19 +21,19 @@ The Node.js project uses an [open governance model](./GOVERNANCE.md). The
 # Table of contents
 
 * [Support](#support)
-* [Release Types](#release-types)
+* [Release types](#release-types)
   * [Download](#download)
-    * [Current and LTS Releases](#current-and-lts-releases)
-    * [Nightly Releases](#nightly-releases)
-    * [API Documentation](#api-documentation)
-  * [Verifying Binaries](#verifying-binaries)
+    * [Current and LTS releases](#current-and-lts-releases)
+    * [Nightly releases](#nightly-releases)
+    * [API documentation](#api-documentation)
+  * [Verifying binaries](#verifying-binaries)
 * [Building Node.js](#building-nodejs)
 * [Security](#security)
 * [Contributing to Node.js](#contributing-to-nodejs)
-* [Current Project Team Members](#current-project-team-members)
+* [Current project team members](#current-project-team-members)
   * [TSC (Technical Steering Committee)](#tsc-technical-steering-committee)
   * [Collaborators](#collaborators)
-  * [Release Keys](#release-keys)
+  * [Release keys](#release-keys)
 * [License](#license)
 
 ## Support
@@ -50,7 +50,7 @@ Looking for help? Check out the
   April and October every year. Releases appearing each October have a support
   life of 8 months. Releases appearing each April convert to LTS (see below)
   each October.
-* **LTS**: Releases that receive Long-term Support, with a focus on stability
+* **LTS**: Releases that receive Long Term Support, with a focus on stability
   and security. Every even-numbered major version will become an LTS release.
   LTS releases receive 12 months of _Active LTS_ support and a further 18 months
   of _Maintenance_. LTS release lines have alphabetically-ordered code names,
@@ -155,6 +155,8 @@ For information about the governance of the Node.js project, see
 ### TSC (Technical Steering Committee)
 
 <!--lint disable prohibited-strings-->
+* [aduh95](https://github.com/aduh95) -
+**Antoine du Hamel** &lt;duhamelantoine1995@gmail.com&gt; (he/him)
 * [apapirovski](https://github.com/apapirovski) -
 **Anatoli Papirovski** &lt;apapirovski@mac.com&gt; (he/him)
 * [BethGriggs](https://github.com/BethGriggs) -
@@ -169,10 +171,12 @@ For information about the governance of the Node.js project, see
 **Shelley Vohr** &lt;codebytere@gmail.com&gt; (she/her)
 * [danbev](https://github.com/danbev) -
 **Daniel Bevenius** &lt;daniel.bevenius@gmail.com&gt; (he/him)
+* [danielleadams](https://github.com/danielleadams) -
+**Danielle Adams** &lt;adamzdanielle@gmail.com&gt; (she/her)
 * [fhinkel](https://github.com/fhinkel) -
 **Franziska Hinkelmann** &lt;franziska.hinkelmann@gmail.com&gt; (she/her)
 * [gabrielschulhof](https://github.com/gabrielschulhof) -
-**Gabriel Schulhof** &lt;gabriel.schulhof@intel.com&gt;
+**Gabriel Schulhof** &lt;gabrielschulhof@gmail.com&gt;
 * [gireeshpunathil](https://github.com/gireeshpunathil) -
 **Gireesh Punathil** &lt;gpunathi@in.ibm.com&gt; (he/him)
 * [jasnell](https://github.com/jasnell) -
@@ -187,6 +191,8 @@ For information about the governance of the Node.js project, see
 **Mary Marchini** &lt;oss@mmarchini.me&gt; (she/her)
 * [MylesBorins](https://github.com/MylesBorins) -
 **Myles Borins** &lt;myles.borins@gmail.com&gt; (he/him)
+* [ronag](https://github.com/ronag) -
+**Robert Nagy** &lt;ronagy@icloud.com&gt;
 * [targos](https://github.com/targos) -
 **Michaël Zasso** &lt;targos@protonmail.com&gt; (he/him)
 * [tniessen](https://github.com/tniessen) -
@@ -285,6 +291,8 @@ For information about the governance of the Node.js project, see
 **Danielle Adams** &lt;adamzdanielle@gmail.com&gt; (she/her)
 * [davisjam](https://github.com/davisjam) -
 **Jamie Davis** &lt;davisjam@vt.edu&gt; (he/him)
+* [DerekNonGeneric](https://github.com/DerekNonGeneric) -
+**Derek Lewis** &lt;DerekNonGeneric@inf.is&gt; (he/him)
 * [devnexen](https://github.com/devnexen) -
 **David Carlier** &lt;devnexen@gmail.com&gt;
 * [devsnek](https://github.com/devsnek) -
@@ -306,7 +314,7 @@ For information about the governance of the Node.js project, see
 * [Flarna](https://github.com/Flarna) -
 **Gerhard Stöbich** &lt;deb2001-github@yahoo.de&gt;  (he/they)
 * [gabrielschulhof](https://github.com/gabrielschulhof) -
-**Gabriel Schulhof** &lt;gabriel.schulhof@intel.com&gt;
+**Gabriel Schulhof** &lt;gabrielschulhof@gmail.com&gt;
 * [gdams](https://github.com/gdams) -
 **George Adams** &lt;george.adams@uk.ibm.com&gt; (he/him)
 * [geek](https://github.com/geek) -
@@ -353,6 +361,8 @@ For information about the governance of the Node.js project, see
 **Chengzhong Wu** &lt;legendecas@gmail.com&gt; (he/him)
 * [Leko](https://github.com/Leko) -
 **Shingo Inoue** &lt;leko.noor@gmail.com&gt; (he/him)
+* [linkgoron](https://github.com/linkgoron) -
+**Nitzan Uziely** &lt;linkgoron@gmail.com&gt;
 * [lpinca](https://github.com/lpinca) -
 **Luigi Pinca** &lt;luigipinca@gmail.com&gt; (he/him)
 * [lundibundi](https://github.com/lundibundi) -
@@ -385,8 +395,6 @@ For information about the governance of the Node.js project, see
 **Filip Skokan** &lt;panva.ip@gmail.com&gt;
 * [PoojaDurgad](https://github.com/PoojaDurgad) -
 **Pooja D P** &lt;Pooja.D.P@ibm.com&gt; (she/her)
-* [psmarshall](https://github.com/psmarshall) -
-**Peter Marshall** &lt;petermarshall@chromium.org&gt; (he/him)
 * [puzpuzpuz](https://github.com/puzpuzpuz) -
 **Andrey Pechkurov** &lt;apechkurov@gmail.com&gt; (he/him)
 * [Qard](https://github.com/Qard) -
@@ -476,8 +484,6 @@ For information about the governance of the Node.js project, see
 **Claudio Rodriguez** &lt;cjrodr@yahoo.com&gt;
 * [DavidCai1993](https://github.com/DavidCai1993) -
 **David Cai** &lt;davidcai1993@yahoo.com&gt; (he/him)
-* [DerekNonGeneric](https://github.com/DerekNonGeneric) -
-**Derek Lewis** &lt;DerekNonGeneric@inf.is&gt; (he/him)
 * [digitalinfinity](https://github.com/digitalinfinity) -
 **Hitesh Kanwathirtha** &lt;digitalinfinity@gmail.com&gt; (he/him)
 * [eljefedelrodeodeljefe](https://github.com/eljefedelrodeodeljefe) -
@@ -548,6 +554,8 @@ For information about the governance of the Node.js project, see
 **Minqi Pan** &lt;pmq2001@gmail.com&gt;
 * [princejwesley](https://github.com/princejwesley) -
 **Prince John Wesley** &lt;princejohnwesley@gmail.com&gt;
+* [psmarshall](https://github.com/psmarshall) -
+**Peter Marshall** &lt;petermarshall@chromium.org&gt; (he/him)
 * [rlidwka](https://github.com/rlidwka) -
 **Alex Kocharin** &lt;alex@kocharin.ru&gt;
 * [rmg](https://github.com/rmg) -
@@ -591,6 +599,10 @@ maintaining the Node.js project.
 
 ### Triagers
 
+* [Ayase-252](https://github.com/Ayase-252) -
+**Qingyu Deng** &lt;i@ayase-lab.com&gt;
+* [marsonya](https://github.com/marsonya) -
+**Akhil Marsonya** &lt;akhil.marsonya27@gmail.com&gt; (he/him)
 * [PoojaDurgad](https://github.com/PoojaDurgad) -
 **Pooja Durgad** &lt;Pooja.D.P@ibm.com&gt;
 * [RaisinTen](https://github.com/RaisinTen) -
@@ -669,13 +681,13 @@ Other keys used to sign some previous releases:
 Node.js is available under the
 [MIT license](https://opensource.org/licenses/MIT). Node.js also includes
 external libraries that are available under a variety of licenses.  See
-[LICENSE](https://github.com/nodejs/node/blob/master/LICENSE) for the full
+[LICENSE](https://github.com/nodejs/node/blob/HEAD/LICENSE) for the full
 license text.
 
-[Code of Conduct]: https://github.com/nodejs/admin/blob/master/CODE_OF_CONDUCT.md
+[Code of Conduct]: https://github.com/nodejs/admin/blob/HEAD/CODE_OF_CONDUCT.md
 [Contributing to the project]: CONTRIBUTING.md
 [Node.js Website]: https://nodejs.org/
 [OpenJS Foundation]: https://openjsf.org/
-[Strategic Initiatives]: https://github.com/nodejs/TSC/blob/master/Strategic-Initiatives.md
+[Strategic Initiatives]: https://github.com/nodejs/TSC/blob/HEAD/Strategic-Initiatives.md
 [Technical values and prioritization]: doc/guides/technical-values.md
-[Working Groups]: https://github.com/nodejs/TSC/blob/master/WORKING_GROUPS.md
+[Working Groups]: https://github.com/nodejs/TSC/blob/HEAD/WORKING_GROUPS.md

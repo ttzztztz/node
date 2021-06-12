@@ -28,6 +28,7 @@
 #include "src/wasm/jump-table-assembler.h"
 #include "src/wasm/module-compiler.h"
 #include "src/wasm/wasm-debug.h"
+#include "src/wasm/wasm-engine.h"
 #include "src/wasm/wasm-import-wrapper-cache.h"
 #include "src/wasm/wasm-module-sourcemap.h"
 #include "src/wasm/wasm-module.h"
@@ -35,6 +36,7 @@
 #include "src/wasm/wasm-objects.h"
 
 #if defined(V8_OS_WIN64)
+#include "src/base/platform/wrappers.h"
 #include "src/diagnostics/unwinding-info-win64.h"
 #endif  // V8_OS_WIN64
 
@@ -182,7 +184,7 @@ std::unique_ptr<const byte[]> WasmCode::ConcatenateBytes(
   byte* ptr = result.get();
   for (auto& vec : vectors) {
     if (vec.empty()) continue;  // Avoid nullptr in {memcpy}.
-    memcpy(ptr, vec.begin(), vec.size());
+    base::Memcpy(ptr, vec.begin(), vec.size());
     ptr += vec.size();
   }
   return result;
@@ -216,21 +218,20 @@ bool WasmCode::ShouldBeLogged(Isolate* isolate) {
          isolate->is_profiling();
 }
 
-void WasmCode::LogCode(Isolate* isolate) const {
+void WasmCode::LogCode(Isolate* isolate, const char* source_url,
+                       int script_id) const {
   DCHECK(ShouldBeLogged(isolate));
   if (IsAnonymous()) return;
 
-  ModuleWireBytes wire_bytes(native_module()->wire_bytes());
-  WireBytesRef name_ref =
-      native_module()->module()->lazily_generated_names.LookupFunctionName(
-          wire_bytes, index(),
-          VectorOf(native_module()->module()->export_table));
+  ModuleWireBytes wire_bytes(native_module_->wire_bytes());
+  const WasmModule* module = native_module_->module();
+  WireBytesRef name_ref = module->lazily_generated_names.LookupFunctionName(
+      wire_bytes, index(), VectorOf(module->export_table));
   WasmName name = wire_bytes.GetNameOrNull(name_ref);
 
-  const WasmDebugSymbols& debug_symbols =
-      native_module()->module()->debug_symbols;
+  const WasmDebugSymbols& debug_symbols = module->debug_symbols;
   auto load_wasm_source_map = isolate->wasm_load_source_map_callback();
-  auto source_map = native_module()->GetWasmSourceMap();
+  auto source_map = native_module_->GetWasmSourceMap();
   if (!source_map && debug_symbols.type == WasmDebugSymbols::Type::SourceMap &&
       !debug_symbols.external_url.is_empty() && load_wasm_source_map) {
     WasmName external_url =
@@ -240,7 +241,7 @@ void WasmCode::LogCode(Isolate* isolate) const {
     v8::Isolate* v8_isolate = reinterpret_cast<v8::Isolate*>(isolate);
     Local<v8::String> source_map_str =
         load_wasm_source_map(v8_isolate, external_url_string.c_str());
-    native_module()->SetWasmSourceMap(
+    native_module_->SetWasmSourceMap(
         std::make_unique<WasmModuleSourceMap>(v8_isolate, source_map_str));
   }
 
@@ -250,7 +251,7 @@ void WasmCode::LogCode(Isolate* isolate) const {
     size_t prefix_len = name_buffer.size();
     constexpr size_t kMaxSigLength = 128;
     name_buffer.resize(prefix_len + kMaxSigLength);
-    const FunctionSig* sig = native_module()->module()->functions[index_].sig;
+    const FunctionSig* sig = module->functions[index_].sig;
     size_t sig_length =
         PrintSignature(VectorOf(&name_buffer[prefix_len], kMaxSigLength), sig);
     name_buffer.resize(prefix_len + sig_length);
@@ -267,8 +268,13 @@ void WasmCode::LogCode(Isolate* isolate) const {
                  "wasm-function[%d]", index()));
     name = VectorOf(name_buffer);
   }
-  PROFILE(isolate,
-          CodeCreateEvent(CodeEventListener::FUNCTION_TAG, this, name));
+  // TODO(clemensb): Remove this #if once this compilation unit is excluded in
+  // no-wasm builds.
+#if V8_ENABLE_WEBASSEMBLY
+  int code_offset = module->functions[index_].code.offset();
+  PROFILE(isolate, CodeCreateEvent(CodeEventListener::FUNCTION_TAG, this, name,
+                                   source_url, code_offset, script_id));
+#endif  // V8_ENABLE_WEBASSEMBLY
 
   if (!source_positions().empty()) {
     LOG_CODE_EVENT(isolate, CodeLinePosInfoRecordEvent(instruction_start(),
@@ -412,11 +418,16 @@ void WasmCode::Disassemble(const char* name, std::ostream& os,
       table.PrintEntry(i, os);
       os << " (sp -> fp)";
       SafepointEntry entry = table.GetEntry(i);
-      if (entry.trampoline_pc() != -1) {
+      if (entry.trampoline_pc() != SafepointEntry::kNoTrampolinePC) {
         os << " trampoline: " << std::hex << entry.trampoline_pc() << std::dec;
       }
-      if (entry.has_deoptimization_index()) {
-        os << " deopt: " << std::setw(6) << entry.deoptimization_index();
+      if (entry.has_register_bits()) {
+        os << " registers: ";
+        uint32_t register_bits = entry.register_bits();
+        int bits = 32 - base::bits::CountLeadingZeros32(register_bits);
+        for (int i = bits - 1; i >= 0; --i) {
+          os << ((register_bits >> i) & 1);
+        }
       }
       os << "\n";
     }
@@ -429,10 +440,6 @@ void WasmCode::Disassemble(const char* name, std::ostream& os,
     it.rinfo()->Print(nullptr, os);
   }
   os << "\n";
-
-  if (code_comments_size() > 0) {
-    PrintCodeCommentsSection(os, code_comments(), code_comments_size());
-  }
 #endif  // ENABLE_DISASSEMBLER
 }
 
@@ -800,15 +807,17 @@ NativeModule::NativeModule(WasmEngine* engine, const WasmFeatures& enabled,
                            std::shared_ptr<const WasmModule> module,
                            std::shared_ptr<Counters> async_counters,
                            std::shared_ptr<NativeModule>* shared_this)
-    : code_allocator_(engine->code_manager(), std::move(code_space),
+    : engine_(engine),
+      engine_scope_(engine->GetBarrierForBackgroundCompile()->TryLock()),
+      code_allocator_(engine->code_manager(), std::move(code_space),
                       async_counters),
       enabled_features_(enabled),
       module_(std::move(module)),
       import_wrapper_cache_(std::unique_ptr<WasmImportWrapperCache>(
           new WasmImportWrapperCache())),
-      engine_(engine),
       use_trap_handler_(trap_handler::IsTrapHandlerEnabled() ? kUseTrapHandler
                                                              : kNoTrapHandler) {
+  DCHECK(engine_scope_);
   // We receive a pointer to an empty {std::shared_ptr}, and install ourselve
   // there.
   DCHECK_NOT_NULL(shared_this);
@@ -816,6 +825,7 @@ NativeModule::NativeModule(WasmEngine* engine, const WasmFeatures& enabled,
   shared_this->reset(this);
   compilation_state_ =
       CompilationState::New(*shared_this, std::move(async_counters));
+  compilation_state_->InitCompileJob(engine);
   DCHECK_NOT_NULL(module_);
   if (module_->num_declared_functions > 0) {
     code_table_ =
@@ -836,8 +846,8 @@ void NativeModule::ReserveCodeTableForTesting(uint32_t max_functions) {
   DCHECK_LE(module_->num_declared_functions, max_functions);
   auto new_table = std::make_unique<WasmCode*[]>(max_functions);
   if (module_->num_declared_functions > 0) {
-    memcpy(new_table.get(), code_table_.get(),
-           module_->num_declared_functions * sizeof(WasmCode*));
+    base::Memcpy(new_table.get(), code_table_.get(),
+                 module_->num_declared_functions * sizeof(WasmCode*));
   }
   code_table_ = std::move(new_table);
 
@@ -855,19 +865,26 @@ void NativeModule::ReserveCodeTableForTesting(uint32_t max_functions) {
   code_space_data_[0].jump_table = main_jump_table_;
 }
 
-void NativeModule::LogWasmCodes(Isolate* isolate) {
+void NativeModule::LogWasmCodes(Isolate* isolate, Script script) {
+  DisallowGarbageCollection no_gc;
   if (!WasmCode::ShouldBeLogged(isolate)) return;
 
   TRACE_EVENT1("v8.wasm", "wasm.LogWasmCodes", "functions",
                module_->num_declared_functions);
 
-  // TODO(titzer): we skip the logging of the import wrappers
-  // here, but they should be included somehow.
-  int start = module_->num_imported_functions;
-  int end = start + module_->num_declared_functions;
-  WasmCodeRefScope code_ref_scope;
-  for (int func_index = start; func_index < end; ++func_index) {
-    if (WasmCode* code = GetCode(func_index)) code->LogCode(isolate);
+  Object url_obj = script.name();
+  DCHECK(url_obj.IsString() || url_obj.IsUndefined());
+  std::unique_ptr<char[]> source_url =
+      url_obj.IsString() ? String::cast(url_obj).ToCString() : nullptr;
+
+  // Log all owned code, not just the current entries in the code table. This
+  // will also include import wrappers.
+  base::MutexGuard lock(&allocation_mutex_);
+  for (auto& owned_entry : owned_code_) {
+    owned_entry.second->LogCode(isolate, source_url.get(), script.id());
+  }
+  for (auto& owned_entry : new_owned_code_) {
+    owned_entry->LogCode(isolate, source_url.get(), script.id());
   }
 }
 
@@ -884,7 +901,7 @@ WasmCode* NativeModule::AddCodeForTesting(Handle<Code> code) {
     reloc_info = OwnedVector<byte>::Of(
         Vector<byte>{code->relocation_start(), relocation_size});
   }
-  Handle<ByteArray> source_pos_table(code->SourcePositionTable(),
+  Handle<ByteArray> source_pos_table(code->source_position_table(),
                                      code->GetIsolate());
   OwnedVector<byte> source_pos =
       OwnedVector<byte>::NewForOverwrite(source_pos_table->length());
@@ -914,7 +931,8 @@ WasmCode* NativeModule::AddCodeForTesting(Handle<Code> code) {
 
   Vector<uint8_t> dst_code_bytes =
       code_allocator_.AllocateForCode(this, instructions.size());
-  memcpy(dst_code_bytes.begin(), instructions.begin(), instructions.size());
+  base::Memcpy(dst_code_bytes.begin(), instructions.begin(),
+               instructions.size());
 
   // Apply the relocation delta by iterating over the RelocInfo.
   intptr_t delta = reinterpret_cast<Address>(dst_code_bytes.begin()) -
@@ -1039,8 +1057,8 @@ std::unique_ptr<WasmCode> NativeModule::AddCodeWithCodeSpace(
   const int instr_size = desc.instr_size;
 
   CODE_SPACE_WRITE_SCOPE
-  memcpy(dst_code_bytes.begin(), desc.buffer,
-         static_cast<size_t>(desc.instr_size));
+  base::Memcpy(dst_code_bytes.begin(), desc.buffer,
+               static_cast<size_t>(desc.instr_size));
 
   // Apply the relocation delta by iterating over the RelocInfo.
   intptr_t delta = dst_code_bytes.begin() - desc.buffer;
@@ -1118,92 +1136,129 @@ WasmCode::Kind GetCodeKind(const WasmCompilationResult& result) {
   }
 }
 
-WasmCode* NativeModule::PublishCodeLocked(std::unique_ptr<WasmCode> code) {
+WasmCode* NativeModule::PublishCodeLocked(
+    std::unique_ptr<WasmCode> owned_code) {
   // The caller must hold the {allocation_mutex_}, thus we fail to lock it here.
   DCHECK(!allocation_mutex_.TryLock());
 
-  if (!code->IsAnonymous() &&
-      code->index() >= module_->num_imported_functions) {
-    DCHECK_LT(code->index(), num_functions());
+  WasmCode* code = owned_code.get();
+  new_owned_code_.emplace_back(std::move(owned_code));
 
-    code->RegisterTrapHandlerData();
+  // Add the code to the surrounding code ref scope, so the returned pointer is
+  // guaranteed to be valid.
+  WasmCodeRefScope::AddRef(code);
 
-    // Assume an order of execution tiers that represents the quality of their
-    // generated code.
-    static_assert(ExecutionTier::kNone < ExecutionTier::kLiftoff &&
-                      ExecutionTier::kLiftoff < ExecutionTier::kTurbofan,
-                  "Assume an order on execution tiers");
-
-    uint32_t slot_idx = declared_function_index(module(), code->index());
-    WasmCode* prior_code = code_table_[slot_idx];
-    // If we are tiered down, install all debugging code (except for stepping
-    // code, which is only used for a single frame and never installed in the
-    // code table of jump table). Otherwise, install code if it was compiled
-    // with a higher tier.
-    static_assert(
-        kForDebugging > kNoDebugging && kWithBreakpoints > kForDebugging,
-        "for_debugging is ordered");
-    const bool update_code_table =
-        // Never install stepping code.
-        code->for_debugging() != kForStepping &&
-        (!prior_code ||
-         (tiering_state_ == kTieredDown
-              // Tiered down: Install breakpoints over normal debug code.
-              ? prior_code->for_debugging() <= code->for_debugging()
-              // Tiered up: Install if the tier is higher than before.
-              : prior_code->tier() < code->tier()));
-    if (update_code_table) {
-      code_table_[slot_idx] = code.get();
-      if (prior_code) {
-        WasmCodeRefScope::AddRef(prior_code);
-        // The code is added to the current {WasmCodeRefScope}, hence the ref
-        // count cannot drop to zero here.
-        CHECK(!prior_code->DecRef());
-      }
-
-      PatchJumpTablesLocked(slot_idx, code->instruction_start());
-    }
-    if (!code->for_debugging() && tiering_state_ == kTieredDown &&
-        code->tier() == ExecutionTier::kTurbofan) {
-      liftoff_bailout_count_.fetch_add(1);
-    }
+  if (code->IsAnonymous() || code->index() < module_->num_imported_functions) {
+    return code;
   }
-  WasmCodeRefScope::AddRef(code.get());
-  WasmCode* result = code.get();
-  owned_code_.emplace(result->instruction_start(), std::move(code));
-  return result;
+
+  DCHECK_LT(code->index(), num_functions());
+
+  code->RegisterTrapHandlerData();
+
+  // Put the code in the debugging cache, if needed.
+  if (V8_UNLIKELY(cached_code_)) InsertToCodeCache(code);
+
+  // Assume an order of execution tiers that represents the quality of their
+  // generated code.
+  static_assert(ExecutionTier::kNone < ExecutionTier::kLiftoff &&
+                    ExecutionTier::kLiftoff < ExecutionTier::kTurbofan,
+                "Assume an order on execution tiers");
+
+  uint32_t slot_idx = declared_function_index(module(), code->index());
+  WasmCode* prior_code = code_table_[slot_idx];
+  // If we are tiered down, install all debugging code (except for stepping
+  // code, which is only used for a single frame and never installed in the
+  // code table of jump table). Otherwise, install code if it was compiled
+  // with a higher tier.
+  static_assert(
+      kForDebugging > kNoDebugging && kWithBreakpoints > kForDebugging,
+      "for_debugging is ordered");
+  const bool update_code_table =
+      // Never install stepping code.
+      code->for_debugging() != kForStepping &&
+      (!prior_code ||
+       (tiering_state_ == kTieredDown
+            // Tiered down: Install breakpoints over normal debug code.
+            ? prior_code->for_debugging() <= code->for_debugging()
+            // Tiered up: Install if the tier is higher than before.
+            : prior_code->tier() < code->tier()));
+  if (update_code_table) {
+    code_table_[slot_idx] = code;
+    if (prior_code) {
+      WasmCodeRefScope::AddRef(prior_code);
+      // The code is added to the current {WasmCodeRefScope}, hence the ref
+      // count cannot drop to zero here.
+      prior_code->DecRefOnLiveCode();
+    }
+
+    PatchJumpTablesLocked(slot_idx, code->instruction_start());
+  } else {
+    // The code tables does not hold a reference to the code, hence decrement
+    // the initial ref count of 1. The code was added to the
+    // {WasmCodeRefScope} though, so it cannot die here.
+    code->DecRefOnLiveCode();
+  }
+  if (!code->for_debugging() && tiering_state_ == kTieredDown &&
+      code->tier() == ExecutionTier::kTurbofan) {
+    liftoff_bailout_count_.fetch_add(1);
+  }
+
+  return code;
 }
 
-WasmCode* NativeModule::AddDeserializedCode(
-    int index, Vector<const byte> instructions, int stack_slots,
+void NativeModule::ReinstallDebugCode(WasmCode* code) {
+  base::MutexGuard lock(&allocation_mutex_);
+
+  DCHECK_EQ(this, code->native_module());
+  DCHECK_EQ(kWithBreakpoints, code->for_debugging());
+  DCHECK(!code->IsAnonymous());
+  DCHECK_LE(module_->num_imported_functions, code->index());
+  DCHECK_LT(code->index(), num_functions());
+  DCHECK_EQ(kTieredDown, tiering_state_);
+
+  uint32_t slot_idx = declared_function_index(module(), code->index());
+  if (WasmCode* prior_code = code_table_[slot_idx]) {
+    WasmCodeRefScope::AddRef(prior_code);
+    // The code is added to the current {WasmCodeRefScope}, hence the ref
+    // count cannot drop to zero here.
+    prior_code->DecRefOnLiveCode();
+  }
+  code_table_[slot_idx] = code;
+  code->IncRef();
+
+  PatchJumpTablesLocked(slot_idx, code->instruction_start());
+}
+
+Vector<uint8_t> NativeModule::AllocateForDeserializedCode(
+    size_t total_code_size) {
+  return code_allocator_.AllocateForCode(this, total_code_size);
+}
+
+std::unique_ptr<WasmCode> NativeModule::AddDeserializedCode(
+    int index, Vector<byte> instructions, int stack_slots,
     int tagged_parameter_slots, int safepoint_table_offset,
     int handler_table_offset, int constant_pool_offset,
     int code_comments_offset, int unpadded_binary_size,
     Vector<const byte> protected_instructions_data,
     Vector<const byte> reloc_info, Vector<const byte> source_position_table,
     WasmCode::Kind kind, ExecutionTier tier) {
-  // CodeSpaceWriteScope is provided by the caller.
-  Vector<uint8_t> dst_code_bytes =
-      code_allocator_.AllocateForCode(this, instructions.size());
-  UpdateCodeSize(dst_code_bytes.size(), tier, kNoDebugging);
-  memcpy(dst_code_bytes.begin(), instructions.begin(), instructions.size());
+  UpdateCodeSize(instructions.size(), tier, kNoDebugging);
 
-  std::unique_ptr<WasmCode> code{new WasmCode{
-      this, index, dst_code_bytes, stack_slots, tagged_parameter_slots,
+  return std::unique_ptr<WasmCode>{new WasmCode{
+      this, index, instructions, stack_slots, tagged_parameter_slots,
       safepoint_table_offset, handler_table_offset, constant_pool_offset,
       code_comments_offset, unpadded_binary_size, protected_instructions_data,
       reloc_info, source_position_table, kind, tier, kNoDebugging}};
-
-  // Note: we do not flush the i-cache here, since the code needs to be
-  // relocated anyway. The caller is responsible for flushing the i-cache later.
-
-  return PublishCode(std::move(code));
 }
 
 std::vector<WasmCode*> NativeModule::SnapshotCodeTable() const {
   base::MutexGuard lock(&allocation_mutex_);
   WasmCode** start = code_table_.get();
   WasmCode** end = start + module_->num_declared_functions;
+  for (WasmCode* code : VectorOf(start, end - start)) {
+    if (code) WasmCodeRefScope::AddRef(code);
+  }
   return std::vector<WasmCode*>{start, end};
 }
 
@@ -1443,8 +1498,51 @@ void NativeModule::SetWireBytes(OwnedVector<const uint8_t> wire_bytes) {
   }
 }
 
+void NativeModule::TransferNewOwnedCodeLocked() const {
+  // The caller holds the allocation mutex.
+  DCHECK(!allocation_mutex_.TryLock());
+  DCHECK(!new_owned_code_.empty());
+  // Sort the {new_owned_code_} vector reversed, such that the position of the
+  // previously inserted element can be used as a hint for the next element. If
+  // elements in {new_owned_code_} are adjacent, this will guarantee
+  // constant-time insertion into the map.
+  std::sort(new_owned_code_.begin(), new_owned_code_.end(),
+            [](const std::unique_ptr<WasmCode>& a,
+               const std::unique_ptr<WasmCode>& b) {
+              return a->instruction_start() > b->instruction_start();
+            });
+  auto insertion_hint = owned_code_.end();
+  for (auto& code : new_owned_code_) {
+    DCHECK_EQ(0, owned_code_.count(code->instruction_start()));
+    // Check plausibility of the insertion hint.
+    DCHECK(insertion_hint == owned_code_.end() ||
+           insertion_hint->first > code->instruction_start());
+    insertion_hint = owned_code_.emplace_hint(
+        insertion_hint, code->instruction_start(), std::move(code));
+  }
+  new_owned_code_.clear();
+}
+
+void NativeModule::InsertToCodeCache(WasmCode* code) {
+  // The caller holds {allocation_mutex_}.
+  DCHECK(!allocation_mutex_.TryLock());
+  DCHECK_NOT_NULL(cached_code_);
+  if (code->IsAnonymous()) return;
+  // Only cache Liftoff debugging code or TurboFan code (no breakpoints or
+  // stepping).
+  if (code->tier() == ExecutionTier::kLiftoff &&
+      code->for_debugging() != kForDebugging) {
+    return;
+  }
+  auto key = std::make_pair(code->tier(), code->index());
+  if (cached_code_->insert(std::make_pair(key, code)).second) {
+    code->IncRef();
+  }
+}
+
 WasmCode* NativeModule::Lookup(Address pc) const {
   base::MutexGuard lock(&allocation_mutex_);
+  if (!new_owned_code_.empty()) TransferNewOwnedCodeLocked();
   auto iter = owned_code_.upper_bound(pc);
   if (iter == owned_code_.begin()) return nullptr;
   --iter;
@@ -1908,6 +2006,11 @@ std::vector<std::unique_ptr<WasmCode>> NativeModule::AddCompiledCode(
       code_allocator_.AllocateForCode(this, total_code_space);
   // Lookup the jump tables to use once, then use for all code objects.
   auto jump_tables = FindJumpTablesForRegion(base::AddressRegionOf(code_space));
+  // If we happen to have a {total_code_space} which is bigger than
+  // {kMaxCodeSpaceSize}, we would not find valid jump tables for the whole
+  // region. If this ever happens, we need to handle this case (by splitting the
+  // {results} vector in smaller chunks).
+  CHECK(jump_tables.is_valid());
 
   std::vector<std::unique_ptr<WasmCode>> generated_code;
   generated_code.reserve(results.size());
@@ -1953,23 +2056,55 @@ void NativeModule::RecompileForTiering() {
   {
     base::MutexGuard lock(&allocation_mutex_);
     current_state = tiering_state_;
+
+    // Initialize {cached_code_} to signal that this cache should get filled
+    // from now on.
+    if (!cached_code_) {
+      cached_code_ = std::make_unique<
+          std::map<std::pair<ExecutionTier, int>, WasmCode*>>();
+      // Fill with existing code.
+      for (auto& code_entry : owned_code_) {
+        InsertToCodeCache(code_entry.second.get());
+      }
+    }
   }
   RecompileNativeModule(this, current_state);
 }
 
 std::vector<int> NativeModule::FindFunctionsToRecompile(
     TieringState new_tiering_state) {
+  WasmCodeRefScope code_ref_scope;
   base::MutexGuard guard(&allocation_mutex_);
   std::vector<int> function_indexes;
   int imported = module()->num_imported_functions;
   int declared = module()->num_declared_functions;
+  const bool tier_down = new_tiering_state == kTieredDown;
   for (int slot_index = 0; slot_index < declared; ++slot_index) {
     int function_index = imported + slot_index;
-    WasmCode* code = code_table_[slot_index];
-    bool code_is_good = new_tiering_state == kTieredDown
-                            ? code && code->for_debugging()
-                            : code && code->tier() == ExecutionTier::kTurbofan;
-    if (!code_is_good) function_indexes.push_back(function_index);
+    WasmCode* old_code = code_table_[slot_index];
+    bool code_is_good =
+        tier_down ? old_code && old_code->for_debugging()
+                  : old_code && old_code->tier() == ExecutionTier::kTurbofan;
+    if (code_is_good) continue;
+    DCHECK_NOT_NULL(cached_code_);
+    auto cache_it = cached_code_->find(std::make_pair(
+        tier_down ? ExecutionTier::kLiftoff : ExecutionTier::kTurbofan,
+        function_index));
+    if (cache_it != cached_code_->end()) {
+      WasmCode* cached_code = cache_it->second;
+      if (old_code) {
+        WasmCodeRefScope::AddRef(old_code);
+        // The code is added to the current {WasmCodeRefScope}, hence the ref
+        // count cannot drop to zero here.
+        old_code->DecRefOnLiveCode();
+      }
+      code_table_[slot_index] = cached_code;
+      PatchJumpTablesLocked(slot_index, cached_code->instruction_start());
+      cached_code->IncRef();
+      continue;
+    }
+    // Otherwise add the function to the set of functions to recompile.
+    function_indexes.push_back(function_index);
   }
   return function_indexes;
 }
@@ -1981,6 +2116,7 @@ void NativeModule::FreeCode(Vector<WasmCode* const> codes) {
   DebugInfo* debug_info = nullptr;
   {
     base::MutexGuard guard(&allocation_mutex_);
+    if (!new_owned_code_.empty()) TransferNewOwnedCodeLocked();
     debug_info = debug_info_.get();
     // Free the {WasmCode} objects. This will also unregister trap handler data.
     for (WasmCode* code : codes) {
@@ -2091,10 +2227,7 @@ WasmCodeRefScope::WasmCodeRefScope()
 WasmCodeRefScope::~WasmCodeRefScope() {
   DCHECK_EQ(this, current_code_refs_scope);
   current_code_refs_scope = previous_scope_;
-  std::vector<WasmCode*> code_ptrs;
-  code_ptrs.reserve(code_ptrs_.size());
-  code_ptrs.assign(code_ptrs_.begin(), code_ptrs_.end());
-  WasmCode::DecrementRefCount(VectorOf(code_ptrs));
+  WasmCode::DecrementRefCount(VectorOf(code_ptrs_));
 }
 
 // static
@@ -2102,9 +2235,21 @@ void WasmCodeRefScope::AddRef(WasmCode* code) {
   DCHECK_NOT_NULL(code);
   WasmCodeRefScope* current_scope = current_code_refs_scope;
   DCHECK_NOT_NULL(current_scope);
-  auto entry = current_scope->code_ptrs_.insert(code);
-  // If we added a new entry, increment the ref counter.
-  if (entry.second) code->IncRef();
+  current_scope->code_ptrs_.push_back(code);
+  code->IncRef();
+}
+
+Builtins::Name RuntimeStubIdToBuiltinName(WasmCode::RuntimeStubId stub_id) {
+#define RUNTIME_STUB_NAME(Name) Builtins::k##Name,
+#define RUNTIME_STUB_NAME_TRAP(Name) Builtins::kThrowWasm##Name,
+  constexpr Builtins::Name builtin_names[] = {
+      WASM_RUNTIME_STUB_LIST(RUNTIME_STUB_NAME, RUNTIME_STUB_NAME_TRAP)};
+#undef RUNTIME_STUB_NAME
+#undef RUNTIME_STUB_NAME_TRAP
+  STATIC_ASSERT(arraysize(builtin_names) == WasmCode::kRuntimeStubCount);
+
+  DCHECK_GT(arraysize(builtin_names), stub_id);
+  return builtin_names[stub_id];
 }
 
 const char* GetRuntimeStubName(WasmCode::RuntimeStubId stub_id) {

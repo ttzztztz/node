@@ -16,7 +16,7 @@ Node-API.
 When not using Node-API, implementing addons is complicated,
 involving knowledge of several components and APIs:
 
-* V8: the C++ library Node.js uses to provide the
+* [V8][]: the C++ library Node.js uses to provide the
   JavaScript implementation. V8 provides the mechanisms for creating objects,
   calling functions, etc. V8's API is documented mostly in the
   `v8.h` header file (`deps/v8/include/v8.h` in the Node.js source
@@ -1364,10 +1364,11 @@ console.log(result);
 [Embedder's Guide]: https://github.com/v8/v8/wiki/Embedder's%20Guide
 [Linking to libraries included with Node.js]: #addons_linking_to_libraries_included_with_node_js
 [Native Abstractions for Node.js]: https://github.com/nodejs/nan
+[V8]: https://v8.dev/
 [`Worker`]: worker_threads.md#worker_threads_class_worker
 [bindings]: https://github.com/TooTallNate/node-bindings
 [download]: https://github.com/nodejs/node-addon-examples
-[examples]: https://github.com/nodejs/nan/tree/master/examples/
+[examples]: https://github.com/nodejs/nan/tree/HEAD/examples/
 [installation instructions]: https://github.com/nodejs/node-gyp#installation
 [libuv]: https://github.com/libuv/libuv
 [node-gyp]: https://github.com/nodejs/node-gyp

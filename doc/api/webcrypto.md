@@ -187,7 +187,7 @@ const { subtle } = require('crypto').webcrypto;
 async function generateAndWrapHmacKey(format = 'jwk', hash = 'SHA-512') {
   const [
     key,
-    wrappingKey
+    wrappingKey,
   ] = await Promise.all([
     subtle.generateKey({
       name: 'HMAC', hash
@@ -195,7 +195,7 @@ async function generateAndWrapHmacKey(format = 'jwk', hash = 'SHA-512') {
     subtle.generateKey({
       name: 'AES-KW',
       length: 256
-    }, true, ['wrapKey', 'unwrapKey'])
+    }, true, ['wrapKey', 'unwrapKey']),
   ]);
 
   const wrappedKey = await subtle.wrapKey(format, key, wrappingKey, 'AES-KW');
@@ -275,7 +275,7 @@ async function pbkdf2Key(pass, salt, iterations = 1000, length = 256) {
     ec.encode(pass),
     'PBKDF2',
     false,
-    ['deriveBits']);
+    ['deriveKey']);
   const key = await subtle.deriveKey({
     name: 'PBKDF2',
     hash: 'SHA-512',
@@ -536,7 +536,7 @@ added: v15.0.0
 * `derivedKeyAlgorithm`: {HmacKeyGenParams|AesKeyGenParams}
 * `extractable`: {boolean}
 * `keyUsages`: {string[]} See [Key usages][].
-* Returns: {Promise} containing {ArrayBuffer}
+* Returns: {Promise} containing {CryptoKey}
 <!--lint enable maximum-line-length remark-lint-->
 
 Using the method and parameters specified in `algorithm`, and the keying
@@ -606,7 +606,7 @@ The algorithms currently supported include:
 <!-- YAML
 added: v15.0.0
 changes:
-  - version: REPLACEME
+  - version: v15.9.0
     pr-url: https://github.com/nodejs/node/pull/37203
     description: Removed `'NODE-DSA'` JWK export.
 -->
@@ -697,7 +697,7 @@ The {CryptoKey} (secret key) generating algorithms supported include:
 <!-- YAML
 added: v15.0.0
 changes:
-  - version: REPLACEME
+  - version: v15.9.0
     pr-url: https://github.com/nodejs/node/pull/37203
     description: Removed `'NODE-DSA'` JWK import.
 -->
@@ -773,7 +773,7 @@ The algorithms currently supported include:
 * `'NODE-ED25519'`<sup>1</sup>
 * `'NODE-ED448'`<sup>1</sup>
 
-<sup>1</sup> Non-standadrd Node.js extension
+<sup>1</sup> Non-standard Node.js extension
 
 ### `subtle.unwrapKey(format, wrappedKey, unwrappingKey, unwrapAlgo, unwrappedKeyAlgo, extractable, keyUsages)`
 <!-- YAML
@@ -985,14 +985,14 @@ added: v15.0.0
 
 * Type: {number} The size in bits of the generated authentication tag.
   This values must be one of `32`, `64`, `96`, `104`, `112`, `120`, or
-  `128`. **Default**: `128`.
+  `128`. **Default:** `128`.
 
 ### Class: `AesImportParams`
 <!-- YAML
 added: v15.0.0
 -->
 
-#### 'aesImportParams.name`
+#### `aesImportParams.name`
 <!-- YAML
 added: v15.0.0
 -->
@@ -1175,7 +1175,7 @@ added: v15.0.0
 * Type: {ArrayBuffer|TypedArray|DataView|Buffer}
 
 The salt value significantly improves the strength of the HKDF algorithm.
-It should be random or pseudo-random and should be the same length as the
+It should be random or pseudorandom and should be the same length as the
 output of the digest function (for instance, if using `'SHA-256'` as the
 digest, the salt should be 256-bits of random data).
 
@@ -1327,7 +1327,7 @@ added: v15.0.0
 
 * Type: {ArrayBuffer|TypedArray|DataView|Buffer}
 
-Should be at least 16 random or pseudo-random bytes.
+Should be at least 16 random or pseudorandom bytes.
 
 ### Class: `RsaHashedImportParams`
 <!-- YAML
@@ -1697,8 +1697,8 @@ added: v15.8.0
 
 * Type: {boolean}
 
-The `public` parameter is used to specify that the key is to be interpreted
-as a public key.
+The `public` parameter is used to specify that the `'raw'` format key is to be
+interpreted as a public key. **Default:** `false`.
 
 ### `NODE-SCRYPT` Algorithm
 <!-- YAML
@@ -1746,21 +1746,21 @@ added: v15.0.0
 -->
 
 * Type: {number} The CPU/memory cost parameter. Must e a power of two
-  greater than 1. **Default** `16384`.
+  greater than 1. **Default:** `16384`.
 
 ##### `nodeScryptParams.p`
 <!-- YAML
 added: v15.0.0
 -->
 
-* Type: {number} Parallelization parameter. **Default** `1`.
+* Type: {number} Parallelization parameter. **Default:** `1`.
 
 ##### `nodeScryptParams.r`
 <!-- YAML
 added: v15.0.0
 -->
 
-* Type: {number} Block size parameter. **Default**: `8`.
+* Type: {number} Block size parameter. **Default:** `8`.
 
 ##### `nodeScryptParams.salt`
 <!-- YAML

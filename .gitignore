@@ -117,7 +117,7 @@ tools/*/*.i.tmp
 /build
 /coverage
 
-# === Rules for XCode artifacts ===
+# === Rules for Xcode artifacts ===
 *.xcodeproj
 *.xcworkspace
 *.pbxproj
@@ -138,6 +138,15 @@ tools/*/*.i.tmp
 
 # === Rules for Windows vcbuild.bat ===
 /temp-vcbuild
+
+# === Rules for CMake ===
+cmake-build-debug/
+CMakeCache.txt
+CMakeFiles
+CTestTestfile.cmake
+cmake_install.cmake
+install_manifest.txt
+*.cbp
 
 # === Global Rules ===
 # Keep last to avoid being excluded

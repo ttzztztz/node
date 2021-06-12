@@ -60,8 +60,8 @@ struct ECDHBitsConfig final : public MemoryRetainer {
   std::shared_ptr<KeyObjectData> public_;
 
   void MemoryInfo(MemoryTracker* tracker) const override;
-  SET_MEMORY_INFO_NAME(ECDHBitsConfig);
-  SET_SELF_SIZE(ECDHBitsConfig);
+  SET_MEMORY_INFO_NAME(ECDHBitsConfig)
+  SET_SELF_SIZE(ECDHBitsConfig)
 };
 
 struct ECDHBitsTraits final {
@@ -162,15 +162,6 @@ v8::Maybe<bool> GetEcKeyDetail(
     Environment* env,
     std::shared_ptr<KeyObjectData> key,
     v8::Local<v8::Object> target);
-
-ByteSource ConvertToWebCryptoSignature(
-  ManagedEVPPKey key,
-  const ByteSource& signature);
-
-ByteSource ConvertFromWebCryptoSignature(
-    ManagedEVPPKey key,
-    const ByteSource& signature);
-
 }  // namespace crypto
 }  // namespace node
 

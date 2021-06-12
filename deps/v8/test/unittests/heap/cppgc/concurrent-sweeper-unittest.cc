@@ -72,7 +72,9 @@ class ConcurrentSweeperTest : public testing::TestWithHeap {
     ResetLinearAllocationBuffers();
     // Pretend do finish marking as StatsCollector verifies that Notify*
     // methods are called in the right order.
-    heap->stats_collector()->NotifyMarkingStarted();
+    heap->stats_collector()->NotifyMarkingStarted(
+        GarbageCollector::Config::CollectionType::kMajor,
+        GarbageCollector::Config::IsForcedGC::kNotForced);
     heap->stats_collector()->NotifyMarkingCompleted(0);
     Sweeper& sweeper = heap->sweeper();
     const Sweeper::SweepingConfig sweeping_config{
@@ -130,7 +132,7 @@ class ConcurrentSweeperTest : public testing::TestWithHeap {
       // The corresponding page could be removed.
       if (!backend->Lookup(static_cast<ConstAddress>(object))) continue;
 
-      if (!freelist.Contains({object, 0})) return false;
+      if (!freelist.ContainsForTesting({object, 0})) return false;
     }
 
     return true;

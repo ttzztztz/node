@@ -85,11 +85,9 @@ class CompilationCacheScript : public CompilationSubCache {
                                          MaybeHandle<Object> name,
                                          int line_offset, int column_offset,
                                          ScriptOriginOptions resource_options,
-                                         Handle<Context> native_context,
                                          LanguageMode language_mode);
 
-  void Put(Handle<String> source, Handle<Context> context,
-           LanguageMode language_mode,
+  void Put(Handle<String> source, LanguageMode language_mode,
            Handle<SharedFunctionInfo> function_info);
 
   void Age() override;
@@ -184,13 +182,16 @@ class CompilationCacheCode : public CompilationSubCache {
 // compilation data is cached.
 class V8_EXPORT_PRIVATE CompilationCache {
  public:
+  CompilationCache(const CompilationCache&) = delete;
+  CompilationCache& operator=(const CompilationCache&) = delete;
+
   // Finds the script shared function info for a source
   // string. Returns an empty handle if the cache doesn't contain a
   // script for the given source string with the right origin.
   MaybeHandle<SharedFunctionInfo> LookupScript(
       Handle<String> source, MaybeHandle<Object> name, int line_offset,
       int column_offset, ScriptOriginOptions resource_options,
-      Handle<Context> native_context, LanguageMode language_mode);
+      LanguageMode language_mode);
 
   // Finds the shared function info for a source string for eval in a
   // given context.  Returns an empty handle if the cache doesn't
@@ -209,8 +210,7 @@ class V8_EXPORT_PRIVATE CompilationCache {
 
   // Associate the (source, kind) pair to the shared function
   // info. This may overwrite an existing mapping.
-  void PutScript(Handle<String> source, Handle<Context> native_context,
-                 LanguageMode language_mode,
+  void PutScript(Handle<String> source, LanguageMode language_mode,
                  Handle<SharedFunctionInfo> function_info);
 
   // Associate the (source, context->closure()->shared(), kind) triple
@@ -278,8 +278,6 @@ class V8_EXPORT_PRIVATE CompilationCache {
   bool enabled_script_and_eval_;
 
   friend class Isolate;
-
-  DISALLOW_COPY_AND_ASSIGN(CompilationCache);
 };
 
 }  // namespace internal

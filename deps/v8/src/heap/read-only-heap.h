@@ -39,6 +39,9 @@ class ReadOnlyHeap {
 
   virtual ~ReadOnlyHeap() = default;
 
+  ReadOnlyHeap(const ReadOnlyHeap&) = delete;
+  ReadOnlyHeap& operator=(const ReadOnlyHeap&) = delete;
+
   // If necessary creates read-only heap and initializes its artifacts (if the
   // deserializer is provided). Then attaches the read-only heap to the isolate.
   // If the deserializer is not provided, then the read-only heap will be only
@@ -84,8 +87,8 @@ class ReadOnlyHeap {
   // Returns whether the ReadOnlySpace will actually be shared taking into
   // account whether shared memory is available with pointer compression.
   static bool IsReadOnlySpaceShared() {
-    return V8_SHARED_RO_HEAP_BOOL &&
-           (!COMPRESS_POINTERS_BOOL || IsSharedMemoryAvailable());
+    return V8_SHARED_RO_HEAP_BOOL && (!COMPRESS_POINTERS_IN_ISOLATE_CAGE_BOOL ||
+                                      IsSharedMemoryAvailable());
   }
 
   virtual void InitializeIsolateRoots(Isolate* isolate) {}
@@ -121,8 +124,6 @@ class ReadOnlyHeap {
 
   explicit ReadOnlyHeap(ReadOnlySpace* ro_space) : read_only_space_(ro_space) {}
   ReadOnlyHeap(ReadOnlyHeap* ro_heap, ReadOnlySpace* ro_space);
-
-  DISALLOW_COPY_AND_ASSIGN(ReadOnlyHeap);
 };
 
 // This is used without pointer compression when there is just a single

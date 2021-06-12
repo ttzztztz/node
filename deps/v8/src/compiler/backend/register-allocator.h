@@ -351,6 +351,10 @@ class TopTierRegisterAllocationData final : public RegisterAllocationData {
 
   TickCounter* tick_counter() { return tick_counter_; }
 
+  ZoneMap<TopLevelLiveRange*, AllocatedOperand*>& slot_for_const_range() {
+    return slot_for_const_range_;
+  }
+
  private:
   int GetNextLiveRangeId();
 
@@ -378,6 +382,7 @@ class TopTierRegisterAllocationData final : public RegisterAllocationData {
   ZoneVector<ZoneVector<LiveRange*>> spill_state_;
   RegisterAllocationFlags flags_;
   TickCounter* const tick_counter_;
+  ZoneMap<TopLevelLiveRange*, AllocatedOperand*> slot_for_const_range_;
 };
 
 // Representation of the non-empty interval [start,end[.
@@ -727,7 +732,7 @@ struct LiveRangeOrdering {
 };
 class LiveRangeBundle : public ZoneObject {
  public:
-  void MergeSpillRanges();
+  void MergeSpillRangesAndClear();
 
   int id() { return id_; }
 
@@ -782,7 +787,11 @@ class LiveRangeBundle : public ZoneObject {
       : ranges_(zone), uses_(zone), id_(id) {}
 
   bool TryAddRange(LiveRange* range);
-  bool TryMerge(LiveRangeBundle* other, bool trace_alloc);
+
+  // If merging is possible, merge either {lhs} into {rhs} or {rhs} into
+  // {lhs}, clear the source and return the result. Otherwise return nullptr.
+  static LiveRangeBundle* TryMerge(LiveRangeBundle* lhs, LiveRangeBundle* rhs,
+                                   bool trace_alloc);
 
   ZoneSet<LiveRange*, LiveRangeOrdering> ranges_;
   ZoneSet<Range, RangeOrdering> uses_;

@@ -2,26 +2,15 @@ const fs = require('fs')
 const util = require('util')
 const readdir = util.promisify(fs.readdir)
 
-const { test } = require('tap')
+const t = require('tap')
 
-const requireInject = require('require-inject')
+const mockNpm = require('../fixtures/mock-npm')
 
-test('should ignore scripts with --ignore-scripts', (t) => {
+t.test('should ignore scripts with --ignore-scripts', (t) => {
   const SCRIPTS = []
   let REIFY_CALLED = false
-  const ci = requireInject('../../lib/ci.js', {
+  const CI = t.mock('../../lib/ci.js', {
     '../../lib/utils/reify-finish.js': async () => {},
-    '../../lib/npm.js': {
-      globalDir: 'path/to/node_modules/',
-      prefix: 'foo',
-      flatOptions: {
-        global: false,
-        ignoreScripts: true,
-      },
-      config: {
-        get: () => false,
-      },
-    },
     '@npmcli/run-script': ({ event }) => {
       SCRIPTS.push(event)
     },
@@ -32,7 +21,18 @@ test('should ignore scripts with --ignore-scripts', (t) => {
       }
     },
   })
-  ci([], er => {
+
+  const npm = mockNpm({
+    globalDir: 'path/to/node_modules/',
+    prefix: 'foo',
+    config: {
+      global: false,
+      'ignore-scripts': true,
+    },
+  })
+  const ci = new CI(npm)
+
+  ci.exec([], er => {
     if (er)
       throw er
     t.equal(REIFY_CALLED, true, 'called reify')
@@ -41,7 +41,7 @@ test('should ignore scripts with --ignore-scripts', (t) => {
   })
 })
 
-test('should use Arborist and run-script', (t) => {
+t.test('should use Arborist and run-script', (t) => {
   const scripts = [
     'preinstall',
     'install',
@@ -87,13 +87,7 @@ test('should use Arborist and run-script', (t) => {
   const expectRimrafs = 3
   let actualRimrafs = 0
 
-  const ci = requireInject('../../lib/ci.js', {
-    '../../lib/npm.js': {
-      prefix: path,
-      flatOptions: {
-        global: false,
-      },
-    },
+  const CI = t.mock('../../lib/ci.js', {
     '../../lib/utils/reify-finish.js': async () => {},
     '@npmcli/run-script': opts => {
       t.match(opts, { event: scripts.shift() })
@@ -118,7 +112,16 @@ test('should use Arborist and run-script', (t) => {
       t.ok(arb, 'gets arborist tree')
     },
   })
-  ci(null, er => {
+
+  const npm = mockNpm({
+    prefix: path,
+    config: {
+      global: false,
+    },
+  })
+  const ci = new CI(npm)
+
+  ci.exec(null, er => {
     if (er)
       throw er
     for (const [msg, result] of Object.entries(timers))
@@ -130,14 +133,8 @@ test('should use Arborist and run-script', (t) => {
   })
 })
 
-test('should pass flatOptions to Arborist.reify', (t) => {
-  const ci = requireInject('../../lib/ci.js', {
-    '../../lib/npm.js': {
-      prefix: 'foo',
-      flatOptions: {
-        production: true,
-      },
-    },
+t.test('should pass flatOptions to Arborist.reify', (t) => {
+  const CI = t.mock('../../lib/ci.js', {
     '../../lib/utils/reify-finish.js': async () => {},
     '@npmcli/run-script': opts => {},
     '@npmcli/arborist': function () {
@@ -148,25 +145,26 @@ test('should pass flatOptions to Arborist.reify', (t) => {
       }
     },
   })
-  ci(null, er => {
+  const npm = mockNpm({
+    prefix: 'foo',
+    flatOptions: {
+      production: true,
+    },
+  })
+  const ci = new CI(npm)
+  ci.exec(null, er => {
     if (er)
       throw er
   })
 })
 
-test('should throw if package-lock.json or npm-shrinkwrap missing', (t) => {
+t.test('should throw if package-lock.json or npm-shrinkwrap missing', (t) => {
   const testDir = t.testdir({
     'index.js': 'some contents',
     'package.json': 'some info',
   })
 
-  const ci = requireInject('../../lib/ci.js', {
-    '../../lib/npm.js': {
-      prefix: testDir,
-      flatOptions: {
-        global: false,
-      },
-    },
+  const CI = t.mock('../../lib/ci.js', {
     '@npmcli/run-script': opts => {},
     '../../lib/utils/reify-finish.js': async () => {},
     npmlog: {
@@ -175,45 +173,47 @@ test('should throw if package-lock.json or npm-shrinkwrap missing', (t) => {
       },
     },
   })
-  ci(null, (err, res) => {
-    t.ok(err, 'throws error when there is no package-lock')
+  const npm = mockNpm({
+    prefix: testDir,
+    config: {
+      global: false,
+    },
+  })
+  const ci = new CI(npm)
+  ci.exec(null, (err, res) => {
+    t.match(err, /package-lock.json/, 'throws error when there is no package-lock')
     t.notOk(res)
     t.end()
   })
 })
 
-test('should throw ECIGLOBAL', (t) => {
-  const ci = requireInject('../../lib/ci.js', {
-    '../../lib/npm.js': {
-      prefix: 'foo',
-      flatOptions: {
-        global: true,
-      },
-    },
+t.test('should throw ECIGLOBAL', (t) => {
+  const CI = t.mock('../../lib/ci.js', {
     '@npmcli/run-script': opts => {},
     '../../lib/utils/reify-finish.js': async () => {},
   })
-  ci(null, (err, res) => {
-    t.equals(err.code, 'ECIGLOBAL', 'throws error with global packages')
+  const npm = mockNpm({
+    prefix: 'foo',
+    config: {
+      global: true,
+    },
+  })
+  const ci = new CI(npm)
+  ci.exec(null, (err, res) => {
+    t.equal(err.code, 'ECIGLOBAL', 'throws error with global packages')
     t.notOk(res)
     t.end()
   })
 })
 
-test('should remove existing node_modules before installing', (t) => {
+t.test('should remove existing node_modules before installing', (t) => {
   const testDir = t.testdir({
     node_modules: {
       'some-file': 'some contents',
     },
   })
 
-  const ci = requireInject('../../lib/ci.js', {
-    '../../lib/npm.js': {
-      prefix: testDir,
-      flatOptions: {
-        global: false,
-      },
-    },
+  const CI = t.mock('../../lib/ci.js', {
     '@npmcli/run-script': opts => {},
     '../../lib/utils/reify-finish.js': async () => {},
     '@npmcli/arborist': function () {
@@ -229,7 +229,15 @@ test('should remove existing node_modules before installing', (t) => {
     },
   })
 
-  ci(null, er => {
+  const npm = mockNpm({
+    prefix: testDir,
+    config: {
+      global: false,
+    },
+  })
+  const ci = new CI(npm)
+
+  ci.exec(null, er => {
     if (er)
       throw er
   })

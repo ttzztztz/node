@@ -2,12 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#if !V8_ENABLE_WEBASSEMBLY
+#error This header should only be included if WebAssembly is enabled.
+#endif  // !V8_ENABLE_WEBASSEMBLY
+
 #ifndef V8_WASM_WASM_MODULE_H_
 #define V8_WASM_WASM_MODULE_H_
 
 #include <memory>
 
 #include "src/base/optional.h"
+#include "src/base/platform/wrappers.h"
 #include "src/common/globals.h"
 #include "src/handles/handles.h"
 #include "src/utils/vector.h"
@@ -186,30 +191,15 @@ class V8_EXPORT_PRIVATE LazilyGeneratedNames {
                                   uint32_t function_index,
                                   Vector<const WasmExport> export_table) const;
 
-  // For memory and global.
-  std::pair<WireBytesRef, WireBytesRef> LookupNameFromImportsAndExports(
-      ImportExportKindCode kind, uint32_t index,
-      const Vector<const WasmImport> import_table,
-      const Vector<const WasmExport> export_table) const;
-
   void AddForTesting(int function_index, WireBytesRef name);
 
  private:
-  // {function_names_}, {global_names_}, {memory_names_} and {table_names_} are
-  // populated lazily after decoding, and therefore need a mutex to protect
-  // concurrent modifications from multiple {WasmModuleObject}.
+  // {function_names_} are populated lazily after decoding, and
+  // therefore need a mutex to protect concurrent modifications
+  // from multiple {WasmModuleObject}.
   mutable base::Mutex mutex_;
   mutable std::unique_ptr<std::unordered_map<uint32_t, WireBytesRef>>
       function_names_;
-  mutable std::unique_ptr<
-      std::unordered_map<uint32_t, std::pair<WireBytesRef, WireBytesRef>>>
-      global_names_;
-  mutable std::unique_ptr<
-      std::unordered_map<uint32_t, std::pair<WireBytesRef, WireBytesRef>>>
-      memory_names_;
-  mutable std::unique_ptr<
-      std::unordered_map<uint32_t, std::pair<WireBytesRef, WireBytesRef>>>
-      table_names_;
 };
 
 class V8_EXPORT_PRIVATE AsmJsOffsetInformation {
@@ -282,6 +272,8 @@ struct V8_EXPORT_PRIVATE WasmModule {
   uint32_t num_declared_functions = 0;  // excluding imported
   uint32_t num_exported_functions = 0;
   uint32_t num_declared_data_segments = 0;  // From the DataCount section.
+  // Position and size of the code section (payload only, i.e. without section
+  // ID and length).
   WireBytesRef code = {0, 0};
   WireBytesRef name = {0, 0};
   std::vector<TypeDefinition> types;  // by type index
@@ -366,20 +358,20 @@ struct WasmTable {
   // TODO(9495): Update this function as more table types are supported, or
   // remove it completely when all reference types are allowed.
   static bool IsValidTableType(ValueType type, const WasmModule* module) {
-    if (!type.is_nullable()) return false;
+    if (!type.is_object_reference()) return false;
     HeapType heap_type = type.heap_type();
     return heap_type == HeapType::kFunc || heap_type == HeapType::kExtern ||
-           heap_type == HeapType::kExn ||
            (module != nullptr && heap_type.is_index() &&
             module->has_signature(heap_type.ref_index()));
   }
 
-  ValueType type = kWasmStmt;     // table type.
+  ValueType type = kWasmVoid;     // table type.
   uint32_t initial_size = 0;      // initial table size.
   uint32_t maximum_size = 0;      // maximum table size.
   bool has_maximum_size = false;  // true if there is a maximum size.
   bool imported = false;          // true if imported.
   bool exported = false;          // true if exported.
+  WasmInitExpr initial_value;
 };
 
 inline bool is_asmjs_module(const WasmModule* module) {
@@ -512,7 +504,7 @@ class TruncatedUserString {
   TruncatedUserString(const char* start, size_t len)
       : start_(start), length_(std::min(kMaxLen, static_cast<int>(len))) {
     if (len > static_cast<size_t>(kMaxLen)) {
-      memcpy(buffer_, start, kMaxLen - 3);
+      base::Memcpy(buffer_, start, kMaxLen - 3);
       memset(buffer_ + kMaxLen - 3, '.', 3);
       start_ = buffer_;
     }

@@ -221,14 +221,20 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
 
   // Atomic memory operations.
   Node* AtomicLoad(MachineType type, Node* base, Node* index) {
-    if (type.representation() == MachineRepresentation::kWord64) {
-      if (machine()->Is64()) {
-        return AddNode(machine()->Word64AtomicLoad(type), base, index);
-      } else {
-        return AddNode(machine()->Word32AtomicPairLoad(), base, index);
-      }
-    }
+    DCHECK_NE(type.representation(), MachineRepresentation::kWord64);
     return AddNode(machine()->Word32AtomicLoad(type), base, index);
+  }
+
+  Node* AtomicLoad64(Node* base, Node* index) {
+    if (machine()->Is64()) {
+      // This uses Uint64() intentionally: AtomicLoad is not implemented for
+      // Int64(), which is fine because the machine instruction only cares
+      // about words.
+      return AddNode(machine()->Word64AtomicLoad(MachineType::Uint64()), base,
+                     index);
+    } else {
+      return AddNode(machine()->Word32AtomicPairLoad(), base, index);
+    }
   }
 
 #if defined(V8_TARGET_BIG_ENDIAN)
@@ -238,34 +244,41 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
 #endif
 
   Node* AtomicStore(MachineRepresentation rep, Node* base, Node* index,
-                    Node* value, Node* value_high) {
-    if (rep == MachineRepresentation::kWord64) {
-      if (machine()->Is64()) {
-        DCHECK_NULL(value_high);
-        return AddNode(machine()->Word64AtomicStore(rep), base, index, value);
-      } else {
-        return AddNode(machine()->Word32AtomicPairStore(), base, index,
-                       VALUE_HALVES);
-      }
-    }
-    DCHECK_NULL(value_high);
+                    Node* value) {
+    DCHECK_NE(rep, MachineRepresentation::kWord64);
     return AddNode(machine()->Word32AtomicStore(rep), base, index, value);
   }
-#define ATOMIC_FUNCTION(name)                                                \
-  Node* Atomic##name(MachineType type, Node* base, Node* index, Node* value, \
-                     Node* value_high) {                                     \
-    if (type.representation() == MachineRepresentation::kWord64) {           \
-      if (machine()->Is64()) {                                               \
-        DCHECK_NULL(value_high);                                             \
-        return AddNode(machine()->Word64Atomic##name(type), base, index,     \
-                       value);                                               \
-      } else {                                                               \
-        return AddNode(machine()->Word32AtomicPair##name(), base, index,     \
-                       VALUE_HALVES);                                        \
-      }                                                                      \
-    }                                                                        \
-    DCHECK_NULL(value_high);                                                 \
-    return AddNode(machine()->Word32Atomic##name(type), base, index, value); \
+
+  Node* AtomicStore64(Node* base, Node* index, Node* value, Node* value_high) {
+    if (machine()->Is64()) {
+      DCHECK_NULL(value_high);
+      return AddNode(
+          machine()->Word64AtomicStore(MachineRepresentation::kWord64), base,
+          index, value);
+    } else {
+      return AddNode(machine()->Word32AtomicPairStore(), base, index,
+                     VALUE_HALVES);
+    }
+  }
+
+#define ATOMIC_FUNCTION(name)                                                  \
+  Node* Atomic##name(MachineType type, Node* base, Node* index, Node* value) { \
+    DCHECK_NE(type.representation(), MachineRepresentation::kWord64);          \
+    return AddNode(machine()->Word32Atomic##name(type), base, index, value);   \
+  }                                                                            \
+  Node* Atomic##name##64(Node * base, Node * index, Node * value,              \
+                         Node * value_high) {                                  \
+    if (machine()->Is64()) {                                                   \
+      DCHECK_NULL(value_high);                                                 \
+      /* This uses Uint64() intentionally: Atomic operations are not  */       \
+      /* implemented for Int64(), which is fine because the machine   */       \
+      /* instruction only cares about words.                          */       \
+      return AddNode(machine()->Word64Atomic##name(MachineType::Uint64()),     \
+                     base, index, value);                                      \
+    } else {                                                                   \
+      return AddNode(machine()->Word32AtomicPair##name(), base, index,         \
+                     VALUE_HALVES);                                            \
+    }                                                                          \
   }
   ATOMIC_FUNCTION(Exchange)
   ATOMIC_FUNCTION(Add)
@@ -277,24 +290,28 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
 #undef VALUE_HALVES
 
   Node* AtomicCompareExchange(MachineType type, Node* base, Node* index,
-                              Node* old_value, Node* old_value_high,
-                              Node* new_value, Node* new_value_high) {
-    if (type.representation() == MachineRepresentation::kWord64) {
-      if (machine()->Is64()) {
-        DCHECK_NULL(old_value_high);
-        DCHECK_NULL(new_value_high);
-        return AddNode(machine()->Word64AtomicCompareExchange(type), base,
-                       index, old_value, new_value);
-      } else {
-        return AddNode(machine()->Word32AtomicPairCompareExchange(), base,
-                       index, old_value, old_value_high, new_value,
-                       new_value_high);
-      }
-    }
-    DCHECK_NULL(old_value_high);
-    DCHECK_NULL(new_value_high);
+                              Node* old_value, Node* new_value) {
+    DCHECK_NE(type.representation(), MachineRepresentation::kWord64);
     return AddNode(machine()->Word32AtomicCompareExchange(type), base, index,
                    old_value, new_value);
+  }
+
+  Node* AtomicCompareExchange64(Node* base, Node* index, Node* old_value,
+                                Node* old_value_high, Node* new_value,
+                                Node* new_value_high) {
+    if (machine()->Is64()) {
+      DCHECK_NULL(old_value_high);
+      DCHECK_NULL(new_value_high);
+      // This uses Uint64() intentionally: AtomicCompareExchange is not
+      // implemented for Int64(), which is fine because the machine instruction
+      // only cares about words.
+      return AddNode(
+          machine()->Word64AtomicCompareExchange(MachineType::Uint64()), base,
+          index, old_value, new_value);
+    } else {
+      return AddNode(machine()->Word32AtomicPairCompareExchange(), base, index,
+                     old_value, old_value_high, new_value, new_value_high);
+    }
   }
 
   // Arithmetic Operations.
@@ -522,6 +539,14 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
   Node* Word32PairSar(Node* low_word, Node* high_word, Node* shift) {
     return AddNode(machine()->Word32PairSar(), low_word, high_word, shift);
   }
+  Node* Word32Popcnt(Node* a) {
+    return AddNode(machine()->Word32Popcnt().op(), a);
+  }
+  Node* Word64Popcnt(Node* a) {
+    return AddNode(machine()->Word64Popcnt().op(), a);
+  }
+  Node* Word32Ctz(Node* a) { return AddNode(machine()->Word32Ctz().op(), a); }
+  Node* Word64Ctz(Node* a) { return AddNode(machine()->Word64Ctz().op(), a); }
   Node* StackPointerGreaterThan(Node* value) {
     return AddNode(
         machine()->StackPointerGreaterThan(StackCheckKind::kCodeStubAssembler),
@@ -676,6 +701,12 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
   Node* Float64GreaterThan(Node* a, Node* b) { return Float64LessThan(b, a); }
   Node* Float64GreaterThanOrEqual(Node* a, Node* b) {
     return Float64LessThanOrEqual(b, a);
+  }
+  Node* Float32Select(Node* condition, Node* b, Node* c) {
+    return AddNode(machine()->Float32Select().op(), condition, b, c);
+  }
+  Node* Float64Select(Node* condition, Node* b, Node* c) {
+    return AddNode(machine()->Float64Select().op(), condition, b, c);
   }
 
   // Conversions.
@@ -839,6 +870,9 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
   }
 
   // SIMD operations.
+  Node* S128Const(const uint8_t value[16]) {
+    return AddNode(machine()->S128Const(value));
+  }
   Node* I64x2Splat(Node* a) { return AddNode(machine()->I64x2Splat(), a); }
   Node* I64x2SplatI32Pair(Node* a, Node* b) {
     return AddNode(machine()->I64x2SplatI32Pair(), a, b);
@@ -846,6 +880,12 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
   Node* I32x4Splat(Node* a) { return AddNode(machine()->I32x4Splat(), a); }
   Node* I16x8Splat(Node* a) { return AddNode(machine()->I16x8Splat(), a); }
   Node* I8x16Splat(Node* a) { return AddNode(machine()->I8x16Splat(), a); }
+
+  Node* I8x16BitMask(Node* a) { return AddNode(machine()->I8x16BitMask(), a); }
+
+  Node* I8x16Eq(Node* a, Node* b) {
+    return AddNode(machine()->I8x16Eq(), a, b);
+  }
 
   // Stack operations.
   Node* LoadFramePointer() { return AddNode(machine()->LoadFramePointer()); }
@@ -910,14 +950,15 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
 
   // Call to a C function.
   template <class... CArgs>
-  Node* CallCFunction(Node* function, MachineType return_type, CArgs... cargs) {
+  Node* CallCFunction(Node* function, base::Optional<MachineType> return_type,
+                      CArgs... cargs) {
     static_assert(v8::internal::conjunction<
                       std::is_convertible<CArgs, CFunctionArg>...>::value,
                   "invalid argument types");
     return CallCFunction(function, return_type, {cargs...});
   }
 
-  Node* CallCFunction(Node* function, MachineType return_type,
+  Node* CallCFunction(Node* function, base::Optional<MachineType> return_type,
                       std::initializer_list<CFunctionArg> args);
 
   // Call to a C function without a function discriptor on AIX.
@@ -1035,7 +1076,7 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
 
   // A post-processing pass to add effect and control edges so that the graph
   // can be optimized and re-scheduled.
-  // TODO(tebbi): Move this to a separate class.
+  // TODO(turbofan): Move this to a separate class.
   void MakeReschedulable();
   Node* CreateNodeFromPredecessors(const std::vector<BasicBlock*>& predecessors,
                                    const std::vector<Node*>& sidetable,

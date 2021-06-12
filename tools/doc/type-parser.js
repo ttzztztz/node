@@ -15,7 +15,7 @@ const jsPrimitives = {
 
 const jsGlobalObjectsUrl = `${jsDocPrefix}Reference/Global_Objects/`;
 const jsGlobalTypes = [
-  'Array', 'ArrayBuffer', 'DataView', 'Date', 'Error',
+  'AggregateError', 'Array', 'ArrayBuffer', 'DataView', 'Date', 'Error',
   'EvalError', 'Function', 'Map', 'Object', 'Promise', 'RangeError',
   'ReferenceError', 'RegExp', 'Set', 'SharedArrayBuffer', 'SyntaxError',
   'TypeError', 'TypedArray', 'URIError', 'Uint8Array',
@@ -175,6 +175,7 @@ const customTypesMap = {
   'net.BlockList': 'net.html#net_class_net_blocklist',
   'net.Server': 'net.html#net_class_net_server',
   'net.Socket': 'net.html#net_class_net_socket',
+  'net.SocketAddress': 'net.html#net_class_net_socketaddress',
 
   'NodeEventTarget':
     'events.html#events_class_nodeeventtarget',
@@ -222,6 +223,7 @@ const customTypesMap = {
   'vm.SourceTextModule': 'vm.html#vm_class_vm_sourcetextmodule',
 
   'MessagePort': 'worker_threads.html#worker_threads_class_messageport',
+  'Worker': 'worker_threads.html#worker_threads_class_worker',
 
   'X509Certificate': 'crypto.html#crypto_class_x509certificate',
 

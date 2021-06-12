@@ -66,10 +66,19 @@ const gtocHTML = unified()
 const templatePath = path.join(docPath, 'template.html');
 const template = fs.readFileSync(templatePath, 'utf8');
 
-function wrapSections(content) {
+function processContent(content) {
+  content = content.toString();
+  // Increment header tag levels to avoid multiple h1 tags in a doc.
+  // This means we can't already have an <h6>.
+  if (content.includes('<h6>')) {
+    throw new Error('Cannot increment a level 6 header');
+  }
+  // `++level` to convert the string to a number and increment it.
+  content = content.replace(/(?<=<\/?h)[1-5](?=[^<>]*>)/g, (level) => ++level);
+  // Wrap h3 tags in section tags.
   let firstTime = true;
-  return content.toString()
-    .replace(/<h2/g, (heading) => {
+  return content
+    .replace(/<h3/g, (heading) => {
       if (firstTime) {
         firstTime = false;
         return '<section>' + heading;
@@ -91,7 +100,7 @@ function toHTML({ input, content, filename, nodeVersion, versions }) {
                      .replace('__GTOC__', gtocHTML.replace(
                        `class="nav-${id}"`, `class="nav-${id} active"`))
                      .replace('__EDIT_ON_GITHUB__', editOnGitHub(filename))
-                     .replace('__CONTENT__', wrapSections(content));
+                     .replace('__CONTENT__', processContent(content));
 
   const docCreated = input.match(
     /<!--\s*introduced_in\s*=\s*v([0-9]+)\.([0-9]+)\.[0-9]+\s*-->/);
@@ -160,12 +169,10 @@ function linkManPages(text) {
       const displayAs = `<code>${name}(${number}${optionalCharacter})</code>`;
 
       if (BSD_ONLY_SYSCALLS.has(name)) {
-        return `${beginning}<a href="https://www.freebsd.org/cgi/man.cgi` +
-          `?query=${name}&sektion=${number}">${displayAs}</a>`;
+        return `${beginning}<a href="https://www.freebsd.org/cgi/man.cgi?query=${name}&sektion=${number}">${displayAs}</a>`;
       }
 
-      return `${beginning}<a href="http://man7.org/linux/man-pages/man${number}` +
-        `/${name}.${number}${optionalCharacter}.html">${displayAs}</a>`;
+      return `${beginning}<a href="http://man7.org/linux/man-pages/man${number}/${name}.${number}${optionalCharacter}.html">${displayAs}</a>`;
     });
 }
 
@@ -187,6 +194,8 @@ function linkJsTypeDocs(text) {
   return parts.join('`');
 }
 
+const isJSFlavorSnippet = (node) => node.lang === 'cjs' || node.lang === 'mjs';
+
 // Preprocess headers, stability blockquotes, and YAML blocks.
 function preprocessElements({ filename }) {
   return (tree) => {
@@ -194,25 +203,51 @@ function preprocessElements({ filename }) {
     let headingIndex = -1;
     let heading = null;
 
-    visit(tree, null, (node, index) => {
+    visit(tree, null, (node, index, parent) => {
       if (node.type === 'heading') {
         headingIndex = index;
         heading = node;
       } else if (node.type === 'code') {
         if (!node.lang) {
           console.warn(
-            `No language set in ${filename}, ` +
-            `line ${node.position.start.line}`);
+            `No language set in ${filename}, line ${node.position.start.line}`
+          );
         }
-        const language = (node.lang || '').split(' ')[0];
-        const highlighted = getLanguage(language) ?
-          highlight(language, node.value).value :
-          node.value;
+        const className = isJSFlavorSnippet(node) ?
+          `language-js ${node.lang}` :
+          `language-${node.lang}`;
+        const highlighted =
+          `<code class='${className}'>${(getLanguage(node.lang || '') ? highlight(node.lang, node.value) : node).value}</code>`;
         node.type = 'html';
-        node.value = '<pre>' +
-          `<code class = 'language-${node.lang}'>` +
-          highlighted +
-          '</code></pre>';
+
+        if (isJSFlavorSnippet(node)) {
+          const previousNode = parent.children[index - 1] || {};
+          const nextNode = parent.children[index + 1] || {};
+
+          if (!isJSFlavorSnippet(previousNode) &&
+              isJSFlavorSnippet(nextNode) &&
+              nextNode.lang !== node.lang) {
+            // Saving the highlight code as value to be added in the next node.
+            node.value = highlighted;
+          } else if (isJSFlavorSnippet(previousNode)) {
+            node.value = '<pre>' +
+              '<input class="js-flavor-selector" type="checkbox"' +
+              // If CJS comes in second, ESM should display by default.
+              (node.lang === 'cjs' ? ' checked' : '') +
+              ' aria-label="Show modern ES modules syntax">' +
+              previousNode.value +
+              highlighted +
+              '</pre>';
+            node.lang = null;
+            previousNode.value = '';
+            previousNode.lang = null;
+          } else {
+            // Isolated JS snippet, no need to add the checkbox.
+            node.value = `<pre>${highlighted}</pre>`;
+          }
+        } else {
+          node.value = `<pre>${highlighted}</pre>`;
+        }
       } else if (node.type === 'html' && common.isYAMLBlock(node.value)) {
         node.value = parseYAML(node.value);
 
@@ -225,9 +260,9 @@ function preprocessElements({ filename }) {
           const [, prefix, number, explication] =
             text.value.match(STABILITY_RE);
 
-          const isStabilityIndex =
-            index - 2 === headingIndex || // General.
-            index - 3 === headingIndex;   // With api_metadata block.
+          // Stability indices are never more than 3 nodes away from their
+          // heading.
+          const isStabilityIndex = index - headingIndex <= 3;
 
           if (heading && isStabilityIndex) {
             heading.stability = number;
@@ -316,8 +351,7 @@ function parseYAML(text) {
 
     result += '</table>\n</details>\n';
   } else {
-    result += `${added.description}${deprecated.description}` +
-              `${removed.description}\n`;
+    result += `${added.description}${deprecated.description}${removed.description}\n`;
   }
 
   if (meta.napiVersion) {
@@ -380,15 +414,14 @@ function buildToc({ filename, apilinks }) {
       const hasStability = node.stability !== undefined;
       toc += ' '.repeat((depth - 1) * 2) +
         (hasStability ? `* <span class="stability_${node.stability}">` : '* ') +
-        `<a href="#${isDeprecationHeading ? node.data.hProperties.id : id}">` +
-        `${headingText}</a>${hasStability ? '</span>' : ''}\n`;
+        `<a href="#${isDeprecationHeading ? node.data.hProperties.id : id}">${headingText}</a>${hasStability ? '</span>' : ''}\n`;
 
       let anchor =
          `<span><a class="mark" href="#${id}" id="${id}">#</a></span>`;
 
       if (realFilename === 'errors' && headingText.startsWith('ERR_')) {
-        anchor += `<span><a class="mark" href="#${headingText}" ` +
-                  `id="${headingText}">#</a></span>`;
+        anchor +=
+          `<span><a class="mark" href="#${headingText}" id="${headingText}">#</a></span>`;
       }
 
       const api = headingText.replace(/^.*:\s+/, '').replace(/\(.*/, '');
@@ -438,8 +471,7 @@ function altDocs(filename, docCreated, versions) {
     `${host}/docs/latest-v${versionNum}/api/${filename}.html`;
 
   const wrapInListItem = (version) =>
-    `<li><a href="${getHref(version.num)}">${version.num}` +
-    `${version.lts ? ' <b>LTS</b>' : ''}</a></li>`;
+    `<li><a href="${getHref(version.num)}">${version.num}${version.lts ? ' <b>LTS</b>' : ''}</a></li>`;
 
   function isDocInVersion(version) {
     const [versionMajor, versionMinor] = version.num.split('.').map(Number);

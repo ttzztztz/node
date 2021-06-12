@@ -58,6 +58,9 @@ constexpr int GB = MB * 1024;
 #if (V8_TARGET_ARCH_S390 && !V8_HOST_ARCH_S390)
 #define USE_SIMULATOR 1
 #endif
+#if (V8_TARGET_ARCH_RISCV64 && !V8_HOST_ARCH_RISCV64)
+#define USE_SIMULATOR 1
+#endif
 #endif
 
 // Determine whether the architecture uses an embedded constant pool
@@ -96,18 +99,31 @@ STATIC_ASSERT(V8_DEFAULT_STACK_SIZE_KB* KB +
                   kStackLimitSlackForDeoptimizationInBytes <=
               MB);
 
-// Determine whether double field unboxing feature is enabled.
-#if V8_TARGET_ARCH_64_BIT && !defined(V8_COMPRESS_POINTERS)
-#define V8_DOUBLE_FIELDS_UNBOXING false
-#else
-#define V8_DOUBLE_FIELDS_UNBOXING false
+// Determine whether the short builtin calls optimization is enabled.
+#ifdef V8_SHORT_BUILTIN_CALLS
+#ifndef V8_COMPRESS_POINTERS
+// TODO(11527): Fix this by passing Isolate* to Code::OffHeapInstructionStart()
+// and friends.
+#error Short builtin calls feature requires pointer compression
+#endif
 #endif
 
+// This constant is used for detecting whether the machine has >= 4GB of
+// physical memory by checking the max old space size.
+const size_t kShortBuiltinCallsOldSpaceSizeThreshold = size_t{2} * GB;
+
 // Determine whether dict mode prototypes feature is enabled.
-#ifdef V8_DICT_MODE_PROTOTYPES
-#define V8_DICT_MODE_PROTOTYPES_BOOL true
+#ifdef V8_ENABLE_SWISS_NAME_DICTIONARY
+#define V8_ENABLE_SWISS_NAME_DICTIONARY_BOOL true
 #else
-#define V8_DICT_MODE_PROTOTYPES_BOOL false
+#define V8_ENABLE_SWISS_NAME_DICTIONARY_BOOL false
+#endif
+
+// Determine whether dict property constness tracking feature is enabled.
+#ifdef V8_DICT_PROPERTY_CONST_TRACKING
+#define V8_DICT_PROPERTY_CONST_TRACKING_BOOL true
+#else
+#define V8_DICT_PROPERTY_CONST_TRACKING_BOOL false
 #endif
 
 // Determine whether tagged pointers are 8 bytes (used in Torque layouts for
@@ -119,7 +135,7 @@ STATIC_ASSERT(V8_DEFAULT_STACK_SIZE_KB* KB +
 #endif
 
 // Some types of tracing require the SFI to store a unique ID.
-#if defined(V8_TRACE_MAPS) || defined(V8_TRACE_IGNITION)
+#if defined(V8_TRACE_MAPS) || defined(V8_TRACE_UNOPTIMIZED)
 #define V8_SFI_HAS_UNIQUE_ID true
 #else
 #define V8_SFI_HAS_UNIQUE_ID false
@@ -353,6 +369,9 @@ constexpr int kUC16Size = sizeof(uc16);  // NOLINT
 // 128 bit SIMD value size.
 constexpr int kSimd128Size = 16;
 
+// Maximum ordinal used for tracking asynchronous module evaluation order.
+constexpr unsigned kMaxModuleAsyncEvaluatingOrdinal = (1 << 30) - 1;
+
 // FUNCTION_ADDR(f) gets the address of a C function f.
 #define FUNCTION_ADDR(f) (reinterpret_cast<v8::internal::Address>(f))
 
@@ -451,6 +470,10 @@ constexpr int kNoSourcePosition = -1;
 // bytecode offset.
 constexpr int kFunctionEntryBytecodeOffset = -1;
 
+// This constant is used to signal the function exit interrupt budget handling
+// bytecode offset.
+constexpr int kFunctionExitBytecodeOffset = -1;
+
 // This constant is used to indicate missing deoptimization information.
 constexpr int kNoDeoptimizationId = -1;
 
@@ -465,14 +488,18 @@ constexpr int kNoDeoptimizationId = -1;
 // - Bailout: a check failed in the optimized code but we don't
 //   deoptimize the code, but try to heal the feedback and try to rerun
 //   the optimized code again.
+// - EagerWithResume: a check failed in the optimized code, but we can execute
+//   a more expensive check in a builtin that might either result in us resuming
+//   execution in the optimized code, or deoptimizing immediately.
 enum class DeoptimizeKind : uint8_t {
   kEager,
   kSoft,
   kBailout,
   kLazy,
+  kEagerWithResume,
 };
 constexpr DeoptimizeKind kFirstDeoptimizeKind = DeoptimizeKind::kEager;
-constexpr DeoptimizeKind kLastDeoptimizeKind = DeoptimizeKind::kLazy;
+constexpr DeoptimizeKind kLastDeoptimizeKind = DeoptimizeKind::kEagerWithResume;
 STATIC_ASSERT(static_cast<int>(kFirstDeoptimizeKind) == 0);
 constexpr int kDeoptimizeKindCount = static_cast<int>(kLastDeoptimizeKind) + 1;
 inline size_t hash_value(DeoptimizeKind kind) {
@@ -488,6 +515,8 @@ inline std::ostream& operator<<(std::ostream& os, DeoptimizeKind kind) {
       return os << "Lazy";
     case DeoptimizeKind::kBailout:
       return os << "Bailout";
+    case DeoptimizeKind::kEagerWithResume:
+      return os << "EagerMaybeResume";
   }
 }
 
@@ -1638,7 +1667,6 @@ enum class LoadSensitivity {
   V(TrapDataSegmentDropped)        \
   V(TrapElemSegmentDropped)        \
   V(TrapTableOutOfBounds)          \
-  V(TrapBrOnExnNull)               \
   V(TrapRethrowNull)               \
   V(TrapNullDereference)           \
   V(TrapIllegalCast)               \
@@ -1679,12 +1707,16 @@ enum IcCheckType { ELEMENT, PROPERTY };
 //    without going through the on-heap Code trampoline.
 enum class StubCallMode {
   kCallCodeObject,
+#if V8_ENABLE_WEBASSEMBLY
   kCallWasmRuntimeStub,
+#endif  // V8_ENABLE_WEBASSEMBLY
   kCallBuiltinPointer,
 };
 
 constexpr int kFunctionLiteralIdInvalid = -1;
 constexpr int kFunctionLiteralIdTopLevel = 0;
+
+constexpr int kSwissNameDictionaryInitialCapacity = 4;
 
 constexpr int kSmallOrderedHashSetMinCapacity = 4;
 constexpr int kSmallOrderedHashMapMinCapacity = 4;
@@ -1709,20 +1741,20 @@ enum class TraceRetainingPathMode { kEnabled, kDisabled };
 // can be used in Torque.
 enum class VariableAllocationInfo { NONE, STACK, CONTEXT, UNUSED };
 
-enum class DynamicMapChecksStatus : uint8_t {
+enum class DynamicCheckMapsStatus : uint8_t {
   kSuccess = 0,
   kBailout = 1,
   kDeopt = 2
 };
 
 #ifdef V8_COMPRESS_POINTERS
-class IsolateRoot {
+class PtrComprCageBase {
  public:
-  explicit constexpr IsolateRoot(Address address) : address_(address) {}
+  explicit constexpr PtrComprCageBase(Address address) : address_(address) {}
   // NOLINTNEXTLINE
-  inline IsolateRoot(const Isolate* isolate);
+  inline PtrComprCageBase(const Isolate* isolate);
   // NOLINTNEXTLINE
-  inline IsolateRoot(const LocalIsolate* isolate);
+  inline PtrComprCageBase(const LocalIsolate* isolate);
 
   inline Address address() const;
 
@@ -1730,13 +1762,13 @@ class IsolateRoot {
   Address address_;
 };
 #else
-class IsolateRoot {
+class PtrComprCageBase {
  public:
-  IsolateRoot() = default;
+  PtrComprCageBase() = default;
   // NOLINTNEXTLINE
-  IsolateRoot(const Isolate* isolate) {}
+  PtrComprCageBase(const Isolate* isolate) {}
   // NOLINTNEXTLINE
-  IsolateRoot(const LocalIsolate* isolate) {}
+  PtrComprCageBase(const LocalIsolate* isolate) {}
 };
 #endif
 
@@ -1756,6 +1788,14 @@ class int31_t {
 
  private:
   int32_t value_;
+};
+
+enum PropertiesEnumerationMode {
+  // String and then Symbol properties according to the spec
+  // ES#sec-object.assign
+  kEnumerationOrder,
+  // Order of property addition
+  kPropertyAdditionOrder,
 };
 
 }  // namespace internal

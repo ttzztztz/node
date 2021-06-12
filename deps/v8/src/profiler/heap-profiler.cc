@@ -8,6 +8,7 @@
 #include "src/debug/debug.h"
 #include "src/heap/combined-heap.h"
 #include "src/heap/heap-inl.h"
+#include "src/objects/js-array-buffer-inl.h"
 #include "src/profiler/allocation-tracker.h"
 #include "src/profiler/heap-snapshot-generator-inl.h"
 #include "src/profiler/sampling-heap-profiler.h"
@@ -191,7 +192,7 @@ void HeapProfiler::ObjectMoveEvent(Address from, Address to, int size) {
 }
 
 void HeapProfiler::AllocationEvent(Address addr, int size) {
-  DisallowHeapAllocation no_allocation;
+  DisallowGarbageCollection no_gc;
   if (allocation_tracker_) {
     allocation_tracker_->AllocationEvent(addr, size);
   }
